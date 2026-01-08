@@ -23,7 +23,7 @@
     
     <!-- Messages -->
     <div
-      v-for="msg in messages"
+      v-for="(msg, index) in messages"
       :key="msg.id"
       class="flex gap-3"
       :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
@@ -57,23 +57,47 @@
           v-html="renderContent(msg.content)"
         ></div>
         
-        <!-- Meta info -->
+        <!-- Meta info + Feedback -->
         <div 
-          v-if="msg.role === 'assistant' && !msg.streaming && (msg.tools_used?.length || msg.duration_ms || msg.model)"
-          class="flex flex-wrap items-center gap-2 mt-3 pt-2 border-t border-gray-700/50"
+          v-if="msg.role === 'assistant' && !msg.streaming"
+          class="flex flex-wrap items-center justify-between gap-2 mt-3 pt-2 border-t border-gray-700/50"
         >
-          <span v-if="msg.model" class="text-xs text-gray-500">{{ msg.model }}</span>
-          <span v-if="msg.duration_ms" class="text-xs text-gray-500">{{ formatDuration(msg.duration_ms) }}</span>
-          <span v-if="msg.iterations" class="text-xs text-gray-500">{{ msg.iterations }} iter</span>
-          <div v-if="msg.tools_used?.length" class="flex flex-wrap gap-1">
-            <span 
-              v-for="t in msg.tools_used" 
-              :key="t"
-              class="px-1.5 py-0.5 bg-gray-700/50 rounded text-xs text-gray-400"
-            >
-              {{ t }}
-            </span>
+          <!-- Meta gauche -->
+          <div class="flex flex-wrap items-center gap-2">
+            <span v-if="msg.model" class="text-xs text-gray-500">{{ msg.model }}</span>
+            <span v-if="msg.duration_ms" class="text-xs text-gray-500">{{ formatDuration(msg.duration_ms) }}</span>
+            <span v-if="msg.iterations" class="text-xs text-gray-500">{{ msg.iterations }} iter</span>
+            <div v-if="msg.tools_used?.length" class="flex flex-wrap gap-1">
+              <span 
+                v-for="t in msg.tools_used" 
+                :key="t"
+                class="px-1.5 py-0.5 bg-gray-700/50 rounded text-xs text-gray-400"
+              >
+                {{ t }}
+              </span>
+            </div>
           </div>
+          
+          <!-- Feedback buttons droite -->
+          <FeedbackButtons
+            v-if="msg.content && !msg.isError"
+            :message-id="msg.id"
+            :query="getQueryForMessage(index)"
+            :response="msg.content"
+            :tools-used="msg.tools_used || []"
+          />
+        </div>
+        
+        <!-- Learning indicator (si contexte appris utilisé) -->
+        <div 
+          v-if="msg.learning?.context_used"
+          class="mt-2 flex items-center gap-1 text-xs text-purple-400"
+        >
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+              d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <span>Enrichi par l'apprentissage</span>
         </div>
       </div>
       
@@ -93,8 +117,9 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { marked } from 'marked'
+import FeedbackButtons from './FeedbackButtons.vue'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] }
@@ -151,6 +176,19 @@ function formatDuration(ms) {
   if (!ms) return ''
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
+}
+
+/**
+ * Récupère la question utilisateur correspondant à une réponse assistant
+ */
+function getQueryForMessage(assistantIndex) {
+  // Chercher le message user précédent
+  for (let i = assistantIndex - 1; i >= 0; i--) {
+    if (props.messages[i].role === 'user') {
+      return props.messages[i].content
+    }
+  }
+  return ''
 }
 </script>
 
