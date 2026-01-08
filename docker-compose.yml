@@ -1,0 +1,50 @@
+# AI Orchestrator v6.0 - Docker Compose
+version: "3.9"
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-orchestrator-v6-backend
+    restart: unless-stopped
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+    env_file:
+      - ./backend/.env
+    volumes:
+      - backend-data:/app/data
+    ports:
+      - "8002:8001"
+    networks:
+      - orchestrator-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-orchestrator-v6-frontend
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    depends_on:
+      - backend
+    networks:
+      - orchestrator-net
+
+networks:
+  orchestrator-net:
+    driver: bridge
+
+volumes:
+  backend-data:
