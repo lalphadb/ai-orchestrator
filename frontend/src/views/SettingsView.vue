@@ -18,8 +18,8 @@
             v-model="chat.currentModel"
             class="w-full px-4 py-2 bg-gray-900/50 border border-gray-700/50 rounded-lg text-gray-200 focus:outline-none focus:border-primary-500/50"
           >
-            <option v-for="model in chat.availableModels" :key="model" :value="model">
-              {{ model }}
+            <option v-for="model in chat.availableModels" :key="model.name || model" :value="model.name || model">
+              {{ model.name || model }}
             </option>
           </select>
           <p class="mt-1 text-xs text-gray-500">
@@ -158,7 +158,7 @@
       
       <div class="space-y-2 text-sm">
         <p class="text-gray-300">
-          <span class="text-gray-500">Version:</span> AI Orchestrator v6.1
+          <span class="text-gray-500">Version:</span> AI Orchestrator v6.5
         </p>
         <p class="text-gray-300">
           <span class="text-gray-500">Backend:</span> FastAPI + ReAct Engine

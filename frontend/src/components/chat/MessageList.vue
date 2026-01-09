@@ -5,7 +5,7 @@
       <div class="w-16 h-16 mb-4 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
         <span class="text-white text-2xl font-bold">AI</span>
       </div>
-      <h2 class="text-xl font-semibold text-white mb-2">AI Orchestrator</h2>
+      <h2 class="text-xl font-semibold text-white mb-2">AI Orchestrator v6.5</h2>
       <p class="text-gray-400 max-w-md mb-6">
         Un orchestrateur autonome avec boucle ReAct,<br/>capable d'exécuter des outils et d'interagir avec votre système.
       </p>
@@ -28,7 +28,7 @@
       class="flex gap-3"
       :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
     >
-      <!-- Avatar -->
+      <!-- Avatar Assistant -->
       <div v-if="msg.role === 'assistant'" class="flex-shrink-0">
         <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
           <span class="text-white text-sm font-bold">AI</span>
@@ -38,11 +38,7 @@
       <!-- Message content -->
       <div
         class="max-w-[80%] rounded-2xl px-4 py-3"
-        :class="msg.role === 'user' 
-          ? 'bg-primary-600 text-white' 
-          : msg.isError 
-            ? 'bg-red-500/10 border border-red-500/30 text-red-200'
-            : 'bg-gray-800/80 text-gray-200'"
+        :class="getMessageClass(msg)"
       >
         <!-- Streaming indicator -->
         <div v-if="msg.streaming" class="flex items-center gap-2 mb-2 text-primary-300">
@@ -50,10 +46,16 @@
           <span class="text-sm">Génération...</span>
         </div>
         
-        <!-- Content -->
+        <!-- Special: Models Display (détection ROBUSTE) -->
+        <ModelsDisplay 
+          v-if="detectModels(msg.content).isModelsList"
+          :models="detectModels(msg.content).models"
+        />
+        
+        <!-- Regular Content (rendu amélioré) -->
         <div 
-          class="prose prose-invert prose-sm max-w-none"
-          :class="{ 'whitespace-pre-wrap': !isMarkdown(msg.content) }"
+          v-else
+          class="prose prose-invert prose-sm max-w-none message-content"
           v-html="renderContent(msg.content)"
         ></div>
         
@@ -88,7 +90,23 @@
           />
         </div>
         
-        <!-- Learning indicator (si contexte appris utilisé) -->
+        <!-- Verdict badge (si présent) -->
+        <div 
+          v-if="msg.verdict"
+          class="mt-2 flex items-center gap-2"
+        >
+          <span 
+            class="text-xs px-2 py-1 rounded-full"
+            :class="msg.verdict.status === 'PASS' ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'"
+          >
+            {{ msg.verdict.status }}
+          </span>
+          <span v-if="msg.verdict.confidence" class="text-xs text-gray-500">
+            {{ (msg.verdict.confidence * 100).toFixed(0) }}% confiance
+          </span>
+        </div>
+        
+        <!-- Learning indicator -->
         <div 
           v-if="msg.learning?.context_used"
           class="mt-2 flex items-center gap-1 text-xs text-purple-400"
@@ -120,6 +138,7 @@
 import { ref, watch, nextTick } from 'vue'
 import { marked } from 'marked'
 import FeedbackButtons from './FeedbackButtons.vue'
+import ModelsDisplay from './ModelsDisplay.vue'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] }
@@ -130,11 +149,12 @@ defineEmits(['send'])
 const container = ref(null)
 const scrollAnchor = ref(null)
 
+// Exemples plus orientés workflow
 const examples = [
-  "Quel est le status du serveur ?",
-  "Liste les conteneurs Docker",
-  "Montre l'espace disque",
-  "Quelles sont les mises à jour disponibles ?"
+  "Crée un script de monitoring CPU",
+  "Liste les conteneurs Docker actifs",
+  "Analyse les logs du serveur",
+  "Quels modèles LLM sont disponibles ?"
 ]
 
 // Auto-scroll on new messages
@@ -153,19 +173,244 @@ watch(() => props.messages[props.messages.length - 1]?.content, () => {
   }
 })
 
+/**
+ * Classes CSS pour le message selon son type
+ */
+function getMessageClass(msg) {
+  if (msg.role === 'user') {
+    return 'bg-primary-600 text-white'
+  }
+  if (msg.isError) {
+    return 'bg-red-500/10 border border-red-500/30 text-red-200'
+  }
+  return 'bg-gray-800/80 text-gray-200'
+}
+
+/**
+ * NOUVELLE FONCTION: Détection robuste et parsing unifié des modèles
+ * Retourne { isModelsList: boolean, models: Array }
+ */
+function detectModels(content) {
+  const result = { isModelsList: false, models: [] }
+  
+  if (!content || typeof content !== 'string') return result
+  
+  let cleaned = content.trim()
+  const models = []
+  const seen = new Set()
+
+  // 1. Try extracting JSON from code blocks first
+  const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+  if (codeBlockMatch) {
+    cleaned = codeBlockMatch[1].trim()
+  }
+  
+  // 2. Try parsing full JSON object (most robust method)
+  try {
+    // Find the first { and last } to ignore potential conversational text around JSON
+    const start = cleaned.indexOf('{')
+    const end = cleaned.lastIndexOf('}')
+    
+    if (start !== -1 && end !== -1) {
+      const jsonStr = cleaned.substring(start, end + 1)
+      const parsed = JSON.parse(jsonStr)
+      
+      // Check for standard list_llm_models response structure
+      // Format 1: { models: [...] }
+      if (parsed.models && Array.isArray(parsed.models)) {
+        for (const m of parsed.models) {
+          if (m.name && !seen.has(m.name)) {
+            seen.add(m.name)
+            models.push({
+              name: m.name,
+              size: m.size || 0,
+              modified_at: m.modified_at || null,
+              available: m.available !== false
+            })
+          }
+        }
+      } 
+      // Format 2: Direct array of models [...]
+      else if (Array.isArray(parsed)) {
+        for (const m of parsed) {
+          if (m.name && !seen.has(m.name)) {
+            seen.add(m.name)
+            models.push({
+              name: m.name,
+              size: m.size || 0,
+              modified_at: m.modified_at || null,
+              available: m.available !== false
+            })
+          }
+        }
+      }
+      
+      if (models.length > 0) {
+        result.isModelsList = true
+        result.models = models
+        return result
+      }
+    }
+  } catch (e) {
+    // JSON parse error, continue to fallbacks
+  }
+  
+  // MÉTHODE 3: Détection de lignes JSON individuelles (fallback)
+  // Pattern: { "name": "xxx", "size": 123, ... } sur chaque ligne
+  const linePattern = /\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"size"\s*:\s*(\d+)\s*,\s*"modified_at"\s*:\s*"?([^",}]*)"?\s*,\s*"available"\s*:\s*(true|false)\s*\}/gi
+  let match
+  while ((match = linePattern.exec(cleaned)) !== null) {
+    const name = match[1]
+    if (!seen.has(name)) {
+      seen.add(name)
+      models.push({
+        name: name,
+        size: parseInt(match[2]),
+        modified_at: match[3] === 'null' ? null : match[3],
+        available: match[4].toLowerCase() === 'true'
+      })
+    }
+  }
+  
+  if (models.length >= 3) {
+    result.isModelsList = true
+    result.models = models
+    return result
+  }
+  
+  // MÉTHODE 4: Détection par noms de modèles connus (dernier recours)
+  const knownModelPatterns = [
+    /llama\d*\.?\d*[:\-]?[\w\-]*/gi,
+    /qwen\d*\.?\d*[:\-]?[\w\-]*/gi,
+    /deepseek[:\-]?[\w\-]*/gi,
+    /gemini[:\-]?[\w\-]*/gi,
+    /kimi[:\-]?[\w\-]*/gi,
+    /nomic[:\-]?[\w\-]*/gi,
+    /bge[:\-]?[\w\-]*/gi,
+    /mxbai[:\-]?[\w\-]*/gi,
+    /safeguard[:\-]?[\w\-]*/gi
+  ]
+  
+  for (const pattern of knownModelPatterns) {
+    const matches = cleaned.match(pattern)
+    if (matches) {
+      for (const m of matches) {
+        const normalized = m.toLowerCase()
+        if (!seen.has(normalized) && normalized.length > 3) {
+          seen.add(normalized)
+          models.push({
+            name: m,
+            size: 0,
+            modified_at: null,
+            available: true
+          })
+        }
+      }
+    }
+  }
+  
+  // MÉTHODE 5: Extraction simple name/size si beaucoup de paires trouvées
+  if (models.length < 3) {
+    const simpleNamePattern = /"name"\s*:\s*"([^"]+)"/g
+    const simpleSizePattern = /"size"\s*:\s*(\d+)/g
+    
+    const names = []
+    const sizes = []
+    
+    while ((match = simpleNamePattern.exec(cleaned)) !== null) {
+      names.push(match[1])
+    }
+    while ((match = simpleSizePattern.exec(cleaned)) !== null) {
+      sizes.push(parseInt(match[1]))
+    }
+    
+    // Si on a au moins 5 noms, c'est probablement une liste de modèles
+    if (names.length >= 5) {
+      models.length = 0 // Reset
+      seen.clear()
+      for (let i = 0; i < names.length; i++) {
+        if (!seen.has(names[i])) {
+          seen.add(names[i])
+          models.push({
+            name: names[i],
+            size: sizes[i] || 0,
+            modified_at: null,
+            available: true
+          })
+        }
+      }
+    }
+  }
+  
+  // Décision finale: au moins 5 modèles ou présence de mots-clés LLM spécifiques
+  if (models.length >= 5) {
+    result.isModelsList = true
+    result.models = models
+  } else if (models.length >= 1 && 
+             (cleaned.includes('ollama') || 
+              cleaned.includes('modèle') || 
+              cleaned.includes('LLM') ||
+              cleaned.includes('available'))) {
+    result.isModelsList = true
+    result.models = models
+  }
+  
+  return result
+}
+
+/**
+ * Détection améliorée du Markdown
+ */
 function isMarkdown(content) {
   if (!content) return false
-  return content.includes('```') || content.includes('**') || content.includes('##') || content.includes('- ')
+  
+  const mdPatterns = [
+    /```[\s\S]*?```/,
+    /\*\*[^*]+\*\*/,
+    /\*[^*]+\*/,
+    /^#{1,6}\s/m,
+    /^\s*[-*+]\s/m,
+    /^\s*\d+\.\s/m,
+    /\[([^\]]+)\]\([^)]+\)/,
+    /`[^`]+`/,
+    /^\s*>/m,
+    /\|.+\|/
+  ]
+  
+  return mdPatterns.some(pattern => pattern.test(content))
 }
 
+/**
+ * Rendu du contenu avec Markdown ou texte brut
+ */
 function renderContent(content) {
   if (!content) return ''
-  if (isMarkdown(content)) {
-    return marked.parse(content, { breaks: true, gfm: true })
+  
+  // Si c'est une liste de modèles, ne pas render (sera géré par ModelsDisplay)
+  if (detectModels(content).isModelsList) {
+    return ''
   }
-  return escapeHtml(content)
+  
+  // Traitement Markdown
+  if (isMarkdown(content)) {
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+      headerIds: false,
+      mangle: false,
+      sanitize: false
+    })
+    
+    return marked.parse(content)
+  }
+  
+  // Texte brut: échapper HTML et préserver les sauts de ligne
+  return escapeHtml(content).replace(/\n/g, '<br>')
 }
 
+/**
+ * Échapper le HTML pour éviter les injections
+ */
 function escapeHtml(text) {
   const div = document.createElement('div')
   div.textContent = text
@@ -182,7 +427,6 @@ function formatDuration(ms) {
  * Récupère la question utilisateur correspondant à une réponse assistant
  */
 function getQueryForMessage(assistantIndex) {
-  // Chercher le message user précédent
   for (let i = assistantIndex - 1; i >= 0; i--) {
     if (props.messages[i].role === 'user') {
       return props.messages[i].content
@@ -193,13 +437,54 @@ function getQueryForMessage(assistantIndex) {
 </script>
 
 <style>
-.prose pre {
-  @apply bg-gray-900/80 rounded-lg p-3 overflow-x-auto;
+.message-content {
+  line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
+
+.prose pre {
+  @apply bg-gray-900/80 rounded-lg p-3 overflow-x-auto my-2;
+}
+
 .prose code {
   @apply bg-gray-700/50 px-1.5 py-0.5 rounded text-sm;
 }
+
 .prose pre code {
   @apply bg-transparent p-0;
 }
+
+.prose p {
+  @apply mb-2;
+}
+
+.prose ul, .prose ol {
+  @apply pl-5 mb-2;
+}
+
+.prose li {
+  @apply mb-1;
+}
+
+.prose blockquote {
+  @apply border-l-4 border-gray-600 pl-4 italic text-gray-400;
+}
+
+.prose a {
+  @apply text-primary-400 hover:text-primary-300 underline;
+}
+
+.prose table {
+  @apply w-full border-collapse my-2;
+}
+
+.prose th, .prose td {
+  @apply border border-gray-700 px-2 py-1 text-sm;
+}
+
+.prose th {
+  @apply bg-gray-800;
+}
 </style>
+// Build 1767987964
