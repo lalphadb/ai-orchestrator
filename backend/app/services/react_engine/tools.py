@@ -22,6 +22,8 @@ from typing import Any, Callable, Dict, List, Optional, TypedDict
 from app.core.config import settings
 from app.services.react_engine.secure_executor import secure_executor, ExecutionRole
 from app.services.react_engine.governance import governance_manager, ActionCategory
+from app.services.react_engine.memory import durable_memory, MemoryCategory
+from app.services.react_engine.runbooks import runbook_registry, RunbookCategory
 
 # ===== SECURITY PATTERNS (AUDIT 2026-01-09) =====
 DANGEROUS_PATTERNS = [
@@ -1076,6 +1078,292 @@ BUILTIN_TOOLS.register(
     "Annule une action précédente (si rollback disponible)",
     "governance",
     {"action_id": "string: ID de l'action à annuler"},
+)
+
+
+
+# ===== MEMORY TOOLS (v7) =====
+
+def memory_remember(
+    category: str,
+    key: str,
+    value: str,
+    description: str,
+    tags: str = ""
+) -> ToolResult:
+    """
+    Mémorise une information pour usage futur.
+    
+    Args:
+        category: service|convention|incident|decision|context
+        key: Clé unique
+        value: Valeur à mémoriser
+        description: Description humaine
+        tags: Tags séparés par virgule
+    """
+    try:
+        cat_map = {
+            "service": MemoryCategory.SERVICE,
+            "convention": MemoryCategory.CONVENTION,
+            "incident": MemoryCategory.INCIDENT,
+            "decision": MemoryCategory.DECISION,
+            "context": MemoryCategory.CONTEXT,
+        }
+        cat = cat_map.get(category.lower())
+        if not cat:
+            return fail("E_INVALID_CATEGORY", f"Catégorie invalide: {category}")
+        
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
+        
+        entry = durable_memory.remember(
+            category=cat,
+            key=key,
+            value=value,
+            description=description,
+            tags=tag_list
+        )
+        
+        return ok({
+            "id": entry.id,
+            "key": entry.key,
+            "category": entry.category.value,
+            "saved": True
+        })
+    except Exception as e:
+        return fail("E_MEMORY_ERROR", str(e))
+
+
+def memory_recall(
+    category: str = "",
+    key: str = "",
+    tags: str = "",
+    query: str = ""
+) -> ToolResult:
+    """
+    Rappelle des informations de la mémoire.
+    
+    Args:
+        category: Filtrer par catégorie (optionnel)
+        key: Filtrer par clé exacte (optionnel)
+        tags: Tags à rechercher, séparés par virgule (optionnel)
+        query: Recherche textuelle (optionnel)
+    """
+    try:
+        # Si query fourni, faire une recherche textuelle
+        if query:
+            results = durable_memory.search(query)
+        else:
+            cat = None
+            if category:
+                cat_map = {
+                    "service": MemoryCategory.SERVICE,
+                    "convention": MemoryCategory.CONVENTION,
+                    "incident": MemoryCategory.INCIDENT,
+                    "decision": MemoryCategory.DECISION,
+                    "context": MemoryCategory.CONTEXT,
+                }
+                cat = cat_map.get(category.lower())
+            
+            tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+            
+            results = durable_memory.recall(
+                category=cat,
+                key=key if key else None,
+                tags=tag_list
+            )
+        
+        return ok({
+            "entries": [
+                {
+                    "id": e.id,
+                    "category": e.category.value,
+                    "key": e.key,
+                    "value": e.value,
+                    "description": e.description,
+                    "tags": e.tags,
+                    "confidence": e.confidence
+                }
+                for e in results[:20]  # Limiter à 20 résultats
+            ],
+            "count": len(results)
+        })
+    except Exception as e:
+        return fail("E_MEMORY_ERROR", str(e))
+
+
+def memory_context() -> ToolResult:
+    """
+    Récupère un résumé du contexte mémorisé.
+    """
+    try:
+        summary = durable_memory.get_context_summary()
+        return ok(summary)
+    except Exception as e:
+        return fail("E_MEMORY_ERROR", str(e))
+
+
+# ===== RUNBOOK TOOLS (v7) =====
+
+def list_runbooks(category: str = "") -> ToolResult:
+    """
+    Liste les runbooks disponibles.
+    
+    Args:
+        category: Filtrer par catégorie (deployment|diagnostic|recovery|maintenance|security)
+    """
+    try:
+        if category:
+            cat_map = {
+                "deployment": RunbookCategory.DEPLOYMENT,
+                "diagnostic": RunbookCategory.DIAGNOSTIC,
+                "recovery": RunbookCategory.RECOVERY,
+                "maintenance": RunbookCategory.MAINTENANCE,
+                "security": RunbookCategory.SECURITY,
+            }
+            cat = cat_map.get(category.lower())
+            if not cat:
+                return fail("E_INVALID_CATEGORY", f"Catégorie invalide: {category}")
+            
+            runbooks = runbook_registry.list_by_category(cat)
+            result = [
+                {
+                    "id": rb.id,
+                    "name": rb.name,
+                    "description": rb.description[:100],
+                    "steps_count": len(rb.steps),
+                    "requires_admin": rb.requires_admin
+                }
+                for rb in runbooks
+            ]
+        else:
+            result = runbook_registry.list_all()
+        
+        return ok({
+            "runbooks": result,
+            "count": len(result)
+        })
+    except Exception as e:
+        return fail("E_RUNBOOK_ERROR", str(e))
+
+
+def get_runbook(runbook_id: str) -> ToolResult:
+    """
+    Récupère les détails d'un runbook.
+    
+    Args:
+        runbook_id: ID du runbook
+    """
+    try:
+        rb = runbook_registry.get(runbook_id)
+        if not rb:
+            return fail("E_NOT_FOUND", f"Runbook non trouvé: {runbook_id}")
+        
+        return ok({
+            "id": rb.id,
+            "name": rb.name,
+            "description": rb.description,
+            "category": rb.category.value,
+            "requires_admin": rb.requires_admin,
+            "estimated_duration": rb.estimated_duration,
+            "tags": rb.tags,
+            "steps": [
+                {
+                    "name": s.name,
+                    "description": s.description,
+                    "command": s.command,
+                    "tool": s.tool,
+                    "on_failure": s.on_failure
+                }
+                for s in rb.steps
+            ]
+        })
+    except Exception as e:
+        return fail("E_RUNBOOK_ERROR", str(e))
+
+
+def search_runbooks(query: str) -> ToolResult:
+    """
+    Recherche dans les runbooks.
+    
+    Args:
+        query: Texte à rechercher
+    """
+    try:
+        results = runbook_registry.search(query)
+        return ok({
+            "runbooks": [
+                {
+                    "id": rb.id,
+                    "name": rb.name,
+                    "description": rb.description[:100],
+                    "category": rb.category.value
+                }
+                for rb in results
+            ],
+            "count": len(results)
+        })
+    except Exception as e:
+        return fail("E_RUNBOOK_ERROR", str(e))
+
+
+# ===== MEMORY & RUNBOOK REGISTRATION =====
+BUILTIN_TOOLS.register(
+    "memory_remember",
+    memory_remember,
+    "Mémorise une information pour usage futur",
+    "memory",
+    {
+        "category": "string: service|convention|incident|decision|context",
+        "key": "string: Clé unique",
+        "value": "string: Valeur à mémoriser",
+        "description": "string: Description humaine",
+        "tags": "string (optional): Tags séparés par virgule"
+    },
+)
+
+BUILTIN_TOOLS.register(
+    "memory_recall",
+    memory_recall,
+    "Rappelle des informations de la mémoire",
+    "memory",
+    {
+        "category": "string (optional): Filtrer par catégorie",
+        "key": "string (optional): Filtrer par clé",
+        "tags": "string (optional): Tags à rechercher",
+        "query": "string (optional): Recherche textuelle"
+    },
+)
+
+BUILTIN_TOOLS.register(
+    "memory_context",
+    memory_context,
+    "Récupère un résumé du contexte mémorisé",
+    "memory",
+    {},
+)
+
+BUILTIN_TOOLS.register(
+    "list_runbooks",
+    list_runbooks,
+    "Liste les runbooks (procédures standardisées)",
+    "runbook",
+    {"category": "string (optional): deployment|diagnostic|recovery|maintenance|security"},
+)
+
+BUILTIN_TOOLS.register(
+    "get_runbook",
+    get_runbook,
+    "Récupère les détails d'un runbook",
+    "runbook",
+    {"runbook_id": "string: ID du runbook"},
+)
+
+BUILTIN_TOOLS.register(
+    "search_runbooks",
+    search_runbooks,
+    "Recherche dans les runbooks",
+    "runbook",
+    {"query": "string: Texte à rechercher"},
 )
 
 
