@@ -47,6 +47,12 @@ export const useChatStore = defineStore('chat', () => {
   
   // Initialize WebSocket listeners
   function initWebSocket() {
+    // Éviter les listeners dupliqués
+    if (wsClient._listenersInitialized) {
+      console.log("WebSocket listeners already initialized, skipping")
+      return
+    }
+    wsClient._listenersInitialized = true
     wsClient.on('stateChange', (state) => {
       wsState.value = state
     })
