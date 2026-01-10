@@ -1,6 +1,6 @@
 """
-AI Orchestrator v6.0 - Main Application
-Architecture professionnelle avec FastAPI
+AI Orchestrator v6.1 - Main Application
+Architecture professionnelle avec FastAPI + Métriques Prometheus
 """
 import logging
 from contextlib import asynccontextmanager
@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.database import init_db
+from app.core.metrics import router as metrics_router, init_metrics, OLLAMA_CONNECTED
 from app.api import api_router
 
 # Configuration logging
@@ -27,6 +28,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"🚀 Démarrage {settings.APP_NAME} v{settings.APP_VERSION}")
     
+    # Initialiser les métriques
+    init_metrics(settings.APP_VERSION)
+    logger.info("✅ Métriques Prometheus initialisées")
+    
     # Initialiser la base de données
     init_db()
     logger.info("✅ Base de données initialisée")
@@ -36,12 +41,25 @@ async def lifespan(app: FastAPI):
     ollama_ok = await ollama_client.health_check()
     if ollama_ok:
         logger.info("✅ Ollama connecté")
+        OLLAMA_CONNECTED.set(1)
     else:
         logger.warning("⚠️ Ollama non disponible")
+        OLLAMA_CONNECTED.set(0)
     
     # Afficher les outils disponibles
     from app.services.react_engine.tools import BUILTIN_TOOLS
     logger.info(f"✅ {len(BUILTIN_TOOLS.tools)} outils chargés")
+    
+    # Initialiser la mémoire d'apprentissage
+    try:
+        from app.services.learning import get_learning_memory
+        from app.core.metrics import update_learning_metrics
+        memory = get_learning_memory()
+        stats = memory.get_stats()
+        update_learning_metrics(stats)
+        logger.info(f"✅ Mémoire d'apprentissage: {stats.get('experiences_count', 0)} expériences")
+    except Exception as e:
+        logger.warning(f"⚠️ Mémoire d'apprentissage non disponible: {e}")
     
     logger.info(f"🎯 Serveur prêt sur http://{settings.HOST}:{settings.PORT}")
     
@@ -55,7 +73,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="API d'orchestration IA avec moteur ReAct",
+    description="API d'orchestration IA avec moteur ReAct et auto-apprentissage",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -73,6 +91,9 @@ app.add_middleware(
 # Inclure les routes API
 app.include_router(api_router)
 
+# Inclure les métriques Prometheus (sans auth)
+app.include_router(metrics_router)
+
 
 # Route racine
 @app.get("/")
@@ -83,6 +104,7 @@ async def root():
         "version": settings.APP_VERSION,
         "docs": "/docs",
         "health": "/api/v1/system/health",
+        "metrics": "/metrics",
     }
 
 

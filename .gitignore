@@ -75,3 +75,6 @@ htmlcov/
 # Test
 .tox/
 .nox/
+
+# Auto Claude data directory
+.auto-claude/

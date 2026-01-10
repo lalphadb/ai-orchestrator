@@ -1,14 +1,16 @@
-# AI Orchestrator v6.1
+# AI Orchestrator v6.2
 
-Un orchestrateur IA autonome avec boucle ReAct, exécution d'outils sécurisée, et interface cockpit professionnelle.
+Un orchestrateur IA autonome avec pipeline Workflow complet, exécution d'outils sécurisée, et interface Orchestrator UI professionnelle.
 
 ## 🎯 Fonctionnalités
 
-- **Boucle ReAct** : Reason → Act → Observe → Repeat
-- **72+ outils** intégrés (système, Docker, réseau, fichiers, etc.)
-- **Streaming WebSocket** temps réel
-- **Run Inspector** : traçabilité complète des exécutions
-- **Sécurité** : allowlist de 175 commandes, JWT auth, rate limiting
+- **Pipeline Workflow** : SPEC → PLAN → EXECUTE → VERIFY → REPAIR → COMPLETE
+- **17 outils** intégrés (système, fichiers, QA, utilitaires, réseau)
+- **7 outils QA** : git_status, git_diff, run_tests, run_lint, run_format, run_build, run_typecheck
+- **Erreurs récupérables** : auto-correction via search_directory/search_files
+- **Streaming WebSocket** temps réel avec run_id et phases
+- **Run Inspector** : stepper workflow, tabs Tools/QA/Raw, verdict PASS/FAIL
+- **Sécurité** : allowlist commandes, sandbox Docker, workspace isolé
 - **Multi-modèles** : Ollama local + proxies cloud
 
 ## 🏗️ Architecture

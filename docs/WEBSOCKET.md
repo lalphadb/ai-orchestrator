@@ -61,9 +61,10 @@ Le WebSocket n'utilise pas de token dans les headers (limitation navigateur). L'
 Tous les messages suivent ce format:
 ```json
 {
-  "type": "token|thinking|tool|complete|error",
+  "type": "token|thinking|tool|phase|verification_item|complete|error",
   "data": "...",
-  "timestamp": "2026-01-08T14:30:00.000Z"
+  "timestamp": "2026-01-08T14:30:00.000Z",
+  "run_id": "abc12345"
 }
 ```
 
@@ -126,11 +127,61 @@ Un outil est en cours d'exécution.
     "params": {},
     "iteration": 1
   },
-  "timestamp": "2026-01-08T14:30:01.000Z"
+  "timestamp": "2026-01-08T14:30:01.000Z",
+  "run_id": "abc12345"
 }
 ```
 
-### 5. `complete`
+### 5. `phase` (v6.2)
+
+Changement de phase du workflow.
+
+```json
+{
+  "type": "phase",
+  "data": {
+    "phase": "verify",
+    "status": "in_progress",
+    "message": "Vérification QA..."
+  },
+  "timestamp": "2026-01-08T14:30:02.000Z",
+  "run_id": "abc12345"
+}
+```
+
+**Phases possibles:**
+- `spec` - Génération de la spécification
+- `plan` - Génération du plan d'exécution
+- `execute` - Exécution via ReAct Engine
+- `verify` - Exécution des outils QA
+- `repair` - Correction des problèmes identifiés
+- `complete` - Workflow terminé avec succès
+- `failed` - Workflow terminé en échec
+
+### 6. `verification_item` (v6.2)
+
+Item de vérification QA.
+
+```json
+{
+  "type": "verification_item",
+  "data": {
+    "check_name": "run_tests:backend",
+    "status": "running",
+    "output": null,
+    "error": null
+  },
+  "timestamp": "2026-01-08T14:30:02.500Z",
+  "run_id": "abc12345"
+}
+```
+
+**Statuts possibles:**
+- `running` - Check en cours
+- `passed` - Check réussi
+- `failed` - Check échoué
+
+### 7. `complete`
 
 Réponse terminée avec métadonnées.
 
@@ -139,22 +190,31 @@ Réponse terminée avec métadonnées.
   "type": "complete",
   "data": {
     "response": "Il est actuellement 14h30.",
-    "tools_used": [
-      {
-        "tool": "get_datetime",
-        "input": {},
-        "output": {"datetime": "2026-01-08T14:30:00"},
-        "duration_ms": 5
-      }
-    ],
+    "tools_used": ["get_datetime"],
     "iterations": 2,
-    "duration_ms": 3500
+    "duration_ms": 3500,
+    "verification": {
+      "passed": true,
+      "checks_run": ["run_tests:backend", "run_lint:backend"],
+      "results": [
+        {"name": "run_tests:backend", "passed": true, "output": "5 tests passed"}
+      ],
+      "failures": []
+    },
+    "verdict": {
+      "status": "PASS",
+      "confidence": 0.95,
+      "issues": [],
+      "suggested_fixes": []
+    },
+    "repair_cycles": 0
   },
-  "timestamp": "2026-01-08T14:30:03.500Z"
+  "timestamp": "2026-01-08T14:30:03.500Z",
+  "run_id": "abc12345"
 }
 ```
 
-### 6. `error`
+### 8. `error`
 
 Une erreur s'est produite.
 

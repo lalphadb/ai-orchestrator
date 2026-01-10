@@ -1,4 +1,4 @@
-# 📚 Documentation AI Orchestrator v6
+# 📚 Documentation AI Orchestrator v6.2
 
 Bienvenue dans la documentation complète d'AI Orchestrator v6.
 
@@ -18,8 +18,9 @@ Bienvenue dans la documentation complète d'AI Orchestrator v6.
 |----------|-------------|
 | [Architecture](ARCHITECTURE.md) | Architecture technique complète |
 | [API Reference](API.md) | Documentation de l'API REST et WebSocket |
-| [Outils](TOOLS.md) | Les 9 outils intégrés |
+| [Outils](TOOLS.md) | Les 17 outils intégrés (dont 7 QA) |
 | [WebSocket](WEBSOCKET.md) | Streaming temps réel |
+| [Workflow](WORKFLOW_CONVENTIONS.md) | Pipeline et conventions v6.2 |
 | [Sécurité](SECURITY.md) | Bonnes pratiques de sécurité |
 
 ---
@@ -48,23 +49,25 @@ Bienvenue dans la documentation complète d'AI Orchestrator v6.
 
 ```
 docs/
-├── INDEX.md              # ← Vous êtes ici
-├── INSTALLATION.md       # Guide d'installation
-├── CONFIGURATION.md      # Variables de configuration
-├── DEPLOYMENT.md         # Mise en production
-├── ARCHITECTURE.md       # Architecture technique
-├── API.md                # Référence API
-├── TOOLS.md              # Documentation des outils
-├── WEBSOCKET.md          # Streaming WebSocket
-├── SECURITY.md           # Sécurité
-├── DEVELOPMENT.md        # Guide développeur
-├── TROUBLESHOOTING.md    # Dépannage
-├── FAQ.md                # Questions fréquentes
-├── CHANGELOG.md          # Historique des versions
-├── ROADMAP.md            # Roadmap
-├── api/                  # Exemples API
-├── guides/               # Guides additionnels
-└── examples/             # Exemples de code
+├── INDEX.md                  # ← Vous êtes ici
+├── INSTALLATION.md           # Guide d'installation
+├── CONFIGURATION.md          # Variables de configuration
+├── DEPLOYMENT.md             # Mise en production
+├── ARCHITECTURE.md           # Architecture technique
+├── ARCHITECTURE-v6.1.md      # Architecture v6.1
+├── API.md                    # Référence API
+├── TOOLS.md                  # Documentation des 17 outils
+├── WEBSOCKET.md              # Streaming WebSocket
+├── WORKFLOW_CONVENTIONS.md   # Pipeline workflow v6.2
+├── SECURITY.md               # Sécurité
+├── DEVELOPMENT.md            # Guide développeur
+├── TROUBLESHOOTING.md        # Dépannage
+├── FAQ.md                    # Questions fréquentes
+├── CHANGELOG.md              # Historique des versions
+├── ROADMAP.md                # Roadmap
+├── api/                      # Exemples API
+├── guides/                   # Guides additionnels
+└── examples/                 # Exemples de code
 ```
 
 ---
@@ -82,5 +85,7 @@ docs/
 
 | Version | Date | Status |
 |---------|------|--------|
-| v6.0.0 | 2026-01 | ✅ Stable |
+| v6.2.0 | 2026-01-08 | ✅ Stable |
+| v6.1.0 | 2026-01-08 | ✅ Stable |
+| v6.0.0 | 2026-01-07 | ✅ Stable |
 | v5.x | 2025-12 | ❌ Deprecated |

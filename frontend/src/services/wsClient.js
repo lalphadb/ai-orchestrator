@@ -1,5 +1,6 @@
 /**
  * WebSocket Client robuste avec reconnection et buffering
+ * v6.2 - Support Re-verify, Force Repair, Models
  */
 
 export class WSClient {
@@ -102,6 +103,9 @@ export class WSClient {
   }
   
   handleMessage(data) {
+    // Extraire run_id si présent
+    const runId = data.run_id || null
+
     switch (data.type) {
       case 'token':
         // Buffer tokens to reduce re-renders
@@ -114,15 +118,37 @@ export class WSClient {
           }, this.tokenBufferDelay)
         }
         break
-        
+
       case 'thinking':
-        this.emit('thinking', data.data)
+        this.emit('thinking', data.data, runId)
         break
-        
+
+      case 'phase':
+        // Changement de phase workflow
+        this.emit('phase', data.data, runId)
+        break
+
+      case 'verification_item':
+        // Item de vérification QA
+        this.emit('verificationItem', data.data, runId)
+        break
+
+      // === NOUVEAUX ÉVÉNEMENTS v6.2 ===
+      case 'verification_complete':
+        // Résultat de re-vérification (rerun_verify action)
+        this.emit('verification_complete', data.data, runId)
+        break
+
+      case 'models':
+        // Liste des modèles (get_models action)
+        this.emit('models', data.data)
+        break
+      // === FIN NOUVEAUX ÉVÉNEMENTS ===
+
       case 'tool':
-        this.emit('tool', data.data)
+        this.emit('tool', data.data, runId)
         break
-        
+
       case 'complete':
         // Flush any remaining tokens
         if (this.tokenBuffer) {
@@ -133,18 +159,19 @@ export class WSClient {
           clearTimeout(this.tokenBufferTimeout)
           this.tokenBufferTimeout = null
         }
-        this.emit('complete', data.data)
+        this.emit('complete', data.data, runId)
         break
-        
+
       case 'error':
-        this.emit('error', data.data)
+        this.emit('error', data.data, runId)
         break
-        
+
       case 'conversation_created':
         this.emit('conversationCreated', data.data)
         break
-        
+
       default:
+        console.log('Unknown WS message type:', data.type)
         this.emit('message', data)
     }
   }
@@ -199,11 +226,11 @@ export class WSClient {
     }
   }
   
-  emit(event, data) {
+  emit(event, ...args) {
     if (!this.listeners.has(event)) return
     this.listeners.get(event).forEach(cb => {
       try {
-        cb(data)
+        cb(...args)
       } catch (e) {
         console.error(`Error in WS event handler for ${event}:`, e)
       }

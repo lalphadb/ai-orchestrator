@@ -1,6 +1,6 @@
 # Outils (Tools)
 
-Documentation complète des 9 outils intégrés dans AI Orchestrator v6.
+Documentation complète des 18 outils intégrés dans AI Orchestrator v6.2.1.
 
 ---
 
@@ -12,10 +12,11 @@ Le système d'outils permet à l'IA d'interagir avec le système d'exploitation 
 
 | Catégorie | Outils | Description |
 |-----------|--------|-------------|
-| **system** | 2 | Commandes système et informations |
-| **files** | 4 | Manipulation de fichiers |
+| **system** | 3 | Commandes système, infos et LLMs |
+| **filesystem** | 5 | Manipulation de fichiers et recherche |
 | **utility** | 2 | Date/heure et calculs |
 | **network** | 1 | Requêtes HTTP |
+| **qa** | 7 | Outils d'assurance qualité |
 
 ---
 
@@ -110,6 +111,52 @@ Récupère les informations système (CPU, RAM, disque).
 **Exemple:**
 ```json
 {"tool": "get_system_info", "params": {}}
+```
+
+---
+
+### `list_llm_models`
+
+Liste les modèles LLM disponibles via Ollama avec catégorisation automatique.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | system |
+| **Risque** | 🟢 Faible |
+| **Timeout** | 10 secondes |
+
+**Paramètres:** Aucun
+
+**Retour:**
+```json
+{
+  "total": 30,
+  "local_count": 25,
+  "cloud_count": 5,
+  "total_size_gb": 150.5,
+  "categories": {
+    "general": [{"name": "llama3.2:3b", "size": 2000000000, "available": true}],
+    "code": [{"name": "deepseek-coder:33b", "size": 18000000000, "available": true}],
+    "vision": [{"name": "llava:7b", "size": 4000000000, "available": true}],
+    "embedding": [{"name": "nomic-embed-text", "size": 300000000, "available": true}],
+    "safety": [{"name": "llama-guard-3:1b", "size": 1000000000, "available": true}],
+    "cloud": [{"name": "kimi-k2:1t-cloud", "size": 100, "available": true}]
+  },
+  "models": [...]
+}
+```
+
+**Catégorisation automatique:**
+- **general**: Modèles polyvalents (llama, qwen, etc.)
+- **code**: Spécialisés programmation (coder, deepseek)
+- **vision**: Multimodal/images (vision, -vl, vl:)
+- **embedding**: Vectorisation (embed, nomic, bge, mxbai)
+- **safety**: Modération (safeguard, guard)
+- **cloud**: Proxies cloud (size < 1000, gemini, kimi)
+
+**Exemple:**
+```json
+{"tool": "list_llm_models", "params": {}}
 ```
 
 ---
@@ -449,6 +496,193 @@ Effectue des requêtes HTTP.
 - Pas d'accès aux IPs privées (sauf localhost)
 - Limite de 5 MB pour les réponses
 - Timeout max de 60 secondes
+
+---
+
+## Outil Filesystem: search_directory (v6.2)
+
+### `search_directory`
+
+Recherche des répertoires par nom dans le système de fichiers.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | filesystem |
+| **Risque** | 🟢 Faible |
+| **Sécurité** | Allowlist de bases |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Défaut | Description |
+|-----|------|--------|--------|-------------|
+| `name` | string | ✅ | - | Nom du répertoire à chercher |
+| `base` | string | ❌ | WORKSPACE_DIR | Base de recherche |
+| `max_depth` | int | ❌ | 3 | Profondeur maximale |
+
+**Retour:**
+```json
+{
+  "success": true,
+  "data": {
+    "query": "backend",
+    "base": "/home/user",
+    "max_depth": 3,
+    "matches": [
+      {"path": "/home/user/projects/backend", "name": "backend", "depth": 2}
+    ],
+    "count": 1,
+    "suggestion": "/home/user/projects/backend"
+  }
+}
+```
+
+**Sécurité:**
+- Bases autorisées: `/home`, `/workspace`, `/tmp`, `/var/www`, `/opt`, `WORKSPACE_DIR`
+- Profondeur max: 3
+- Résultats max: 5
+- Utilisé automatiquement sur erreur `E_DIR_NOT_FOUND`
+
+---
+
+## Outils QA (Quality Assurance)
+
+Les 7 outils QA sont utilisés par le Verifier pour valider les modifications.
+
+### `git_status`
+
+Affiche l'état du repository Git.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `git status --porcelain` |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire cible (défaut: workspace) |
+
+---
+
+### `git_diff`
+
+Affiche les modifications non committées.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `git diff` |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire cible |
+| `staged` | bool | ❌ | Inclure les changements staged |
+
+---
+
+### `run_tests`
+
+Exécute les tests du projet.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `pytest` (Python) ou `npm test` (Node) |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire ou fichier de test |
+| `verbose` | bool | ❌ | Mode verbose |
+
+---
+
+### `run_lint`
+
+Exécute le linter sur le code.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `ruff check` (Python) ou `eslint` (JS) |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire ou fichier à analyser |
+| `fix` | bool | ❌ | Corriger automatiquement |
+
+---
+
+### `run_format`
+
+Formate le code selon les standards.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `ruff format` (Python) ou `prettier` (JS) |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire ou fichier à formater |
+| `check` | bool | ❌ | Vérifier seulement (pas de modification) |
+
+---
+
+### `run_build`
+
+Compile/build le projet.
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `npm run build` ou `python setup.py build` |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire du projet |
+
+---
+
+### `run_typecheck`
+
+Vérifie les types (TypeScript/Python).
+
+| Propriété | Valeur |
+|-----------|--------|
+| **Catégorie** | qa |
+| **Commande** | `tsc --noEmit` (TS) ou `mypy` (Python) |
+
+**Paramètres:**
+
+| Nom | Type | Requis | Description |
+|-----|------|--------|-------------|
+| `target` | string | ❌ | Répertoire ou fichier |
+
+---
+
+## Erreurs récupérables (v6.2)
+
+Certaines erreurs déclenchent automatiquement un plan B:
+
+| Code d'erreur | Récupérable | Action automatique |
+|---------------|-------------|-------------------|
+| `E_FILE_NOT_FOUND` | ✅ | Appel search_files |
+| `E_DIR_NOT_FOUND` | ✅ | Appel search_directory |
+| `E_PATH_NOT_FOUND` | ✅ | Appel search_files/search_directory |
+| `E_PERMISSION` | ❌ | - |
+| `E_CMD_NOT_ALLOWED` | ❌ | - |
+| `E_PATH_FORBIDDEN` | ❌ | - |
 
 ---
 

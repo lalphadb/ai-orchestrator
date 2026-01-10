@@ -5,28 +5,88 @@ AI Orchestrator v6.1 - Pipeline Spec/Plan/Execute/Verify/Repair
 Contrat uniforme ToolResult:
 - success: bool
 - data: dict | null
-- error: dict | null  
+- error: dict | null
 - meta: dict (duration_ms, etc.)
 """
+
 import asyncio
-import shlex
-import os
-import time
+import re
 import logging
-from pathlib import Path
-from typing import Dict, Any, Callable, Optional, List, TypedDict
+import os
+import shlex
+import time
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, TypedDict
 
 from app.core.config import settings
+
+# ===== SECURITY PATTERNS (AUDIT 2026-01-09) =====
+DANGEROUS_PATTERNS = [
+    r'\$\(',           # $(command)
+    r'`[^`]+`',        # `command`
+    r'\$\{[^}]+\}',    # ${var}
+    r'>\s*/etc', r'>>\s*/etc',
+    r'>\s*/root', r'>\s*/home', r'>\s*/var',
+    r'\|\s*(bash|sh|zsh|ksh)',
+    r';\s*(bash|sh|rm|chmod|chown)',
+    r'&&\s*(bash|sh|rm|chmod|chown)',
+    r'base64\s+-d', r'base64\s+--decode',
+]
+
+
+def contains_dangerous_patterns(command: str) -> tuple[bool, str]:
+    """Vérifie si la commande contient des patterns dangereux"""
+    for pattern in DANGEROUS_PATTERNS:
+        if re.search(pattern, command, re.IGNORECASE):
+            return True, f"Pattern dangereux détecté"
+    return False, ""
+
+
+def contains_dangerous_arguments(command: str) -> tuple[bool, str]:
+    """Vérifie si la commande contient des arguments dangereux"""
+    dangerous_args = getattr(settings, 'DANGEROUS_ARGUMENTS', [
+        "-c", "--command", "-e", "--eval", "--exec",
+        "| bash", "| sh", "git push", "git commit",
+    ])
+    for arg in dangerous_args:
+        if arg.lower() in command.lower():
+            return True, f"Argument dangereux: {arg}"
+    return False, ""
 
 logger = logging.getLogger(__name__)
 
 
+# ===== ERROR CLASSIFICATION =====
+
+# Erreurs récupérables - le système peut tenter un plan B
+RECOVERABLE_ERRORS = {
+    "E_FILE_NOT_FOUND",
+    "E_DIR_NOT_FOUND",
+    "E_PATH_NOT_FOUND",
+}
+
+# Erreurs non récupérables - arrêt immédiat
+FATAL_ERRORS = {
+    "E_PERMISSION",
+    "E_CMD_NOT_ALLOWED",
+    "E_PATH_FORBIDDEN",
+    "E_WRITE_DISABLED",
+}
+
+
+def is_recoverable_error(error_code: str) -> bool:
+    """Vérifie si une erreur est récupérable"""
+    return error_code in RECOVERABLE_ERRORS
+
+
 # ===== TOOL RESULT CONTRACT =====
+
 
 class ToolError(TypedDict):
     code: str
     message: str
+    recoverable: bool  # Indique si l'erreur peut être récupérée
 
 
 class ToolMeta(TypedDict, total=False):
@@ -44,37 +104,43 @@ class ToolResult(TypedDict):
 
 def ok(data: Dict[str, Any], **meta_extra) -> ToolResult:
     """Retourne un résultat de succès standardisé"""
-    return {
-        "success": True,
-        "data": data,
-        "error": None,
-        "meta": {"duration_ms": 0, **meta_extra}
-    }
+    return {"success": True, "data": data, "error": None, "meta": {"duration_ms": 0, **meta_extra}}
 
 
 def fail(code: str, message: str, **meta_extra) -> ToolResult:
-    """Retourne un résultat d'erreur standardisé"""
+    """Retourne un résultat d'erreur standardisé avec indication de récupérabilité"""
     return {
         "success": False,
         "data": None,
-        "error": {"code": code, "message": message},
-        "meta": {"duration_ms": 0, **meta_extra}
+        "error": {
+            "code": code,
+            "message": message,
+            "recoverable": is_recoverable_error(code),
+        },
+        "meta": {"duration_ms": 0, **meta_extra},
     }
 
 
 def with_timing(func):
     """Decorator pour mesurer le temps d'exécution"""
+
     async def wrapper(*args, **kwargs):
         start = time.perf_counter()
-        result = await func(*args, **kwargs) if asyncio.iscoroutinefunction(func) else func(*args, **kwargs)
+        result = (
+            await func(*args, **kwargs)
+            if asyncio.iscoroutinefunction(func)
+            else func(*args, **kwargs)
+        )
         elapsed_ms = int((time.perf_counter() - start) * 1000)
         if isinstance(result, dict) and "meta" in result:
             result["meta"]["duration_ms"] = elapsed_ms
         return result
+
     return wrapper
 
 
 # ===== SECURITY HELPERS =====
+
 
 def is_command_allowed(command: str) -> tuple[bool, str]:
     """Vérifie si la commande est autorisée (allowlist)"""
@@ -82,19 +148,22 @@ def is_command_allowed(command: str) -> tuple[bool, str]:
         tokens = shlex.split(command)
         if not tokens:
             return False, "Commande vide"
-        
+
         cmd0 = tokens[0]
         # Extraire le binaire (sans chemin)
         binary = os.path.basename(cmd0)
-        
+
         # Vérifier blocklist d'abord
         if binary in settings.COMMAND_BLOCKLIST:
             return False, f"Commande interdite (blocklist): {binary}"
-        
+
         # Vérifier allowlist
         if binary not in settings.COMMAND_ALLOWLIST:
-            return False, f"Commande non autorisée: {binary}. Allowlist: {', '.join(settings.COMMAND_ALLOWLIST[:10])}..."
-        
+            return (
+                False,
+                f"Commande non autorisée: {binary}. Allowlist: {', '.join(settings.COMMAND_ALLOWLIST[:10])}...",
+            )
+
         return True, ""
     except ValueError as e:
         return False, f"Erreur parsing commande: {e}"
@@ -105,11 +174,11 @@ def is_path_in_workspace(path: str) -> tuple[bool, str]:
     try:
         target = Path(path).resolve()
         workspace = Path(settings.WORKSPACE_DIR).resolve()
-        
+
         # Le chemin doit être sous le workspace
         if not str(target).startswith(str(workspace) + os.sep) and target != workspace:
             return False, f"Chemin hors workspace: {target}. Workspace: {workspace}"
-        
+
         return True, ""
     except Exception as e:
         return False, f"Erreur validation chemin: {e}"
@@ -117,19 +186,20 @@ def is_path_in_workspace(path: str) -> tuple[bool, str]:
 
 # ===== TOOL REGISTRY =====
 
+
 class ToolRegistry:
     """Registre des outils disponibles"""
-    
+
     def __init__(self):
         self.tools: Dict[str, Dict[str, Any]] = {}
-    
+
     def register(
         self,
         name: str,
         func: Callable,
         description: str,
         category: str = "general",
-        parameters: Optional[Dict[str, Any]] = None
+        parameters: Optional[Dict[str, Any]] = None,
     ):
         """Enregistre un nouvel outil"""
         self.tools[name] = {
@@ -140,11 +210,11 @@ class ToolRegistry:
             "parameters": parameters or {},
             "usage_count": 0,
         }
-    
+
     def get(self, name: str) -> Optional[Dict[str, Any]]:
         """Récupère un outil"""
         return self.tools.get(name)
-    
+
     def list_tools(self) -> List[Dict[str, Any]]:
         """Liste tous les outils"""
         return [
@@ -157,28 +227,28 @@ class ToolRegistry:
             }
             for name, tool in self.tools.items()
         ]
-    
+
     def get_categories(self) -> List[str]:
         """Liste les catégories"""
         return list(set(t["category"] for t in self.tools.values()))
-    
+
     async def execute(self, name: str, **kwargs) -> ToolResult:
         """Exécute un outil"""
         tool = self.get(name)
         if not tool:
             return fail("E_TOOL_NOT_FOUND", f"Outil '{name}' non trouvé")
-        
+
         try:
             tool["usage_count"] += 1
             func = tool["func"]
-            
+
             start = time.perf_counter()
             if asyncio.iscoroutinefunction(func):
                 result = await func(**kwargs)
             else:
                 result = func(**kwargs)
             elapsed_ms = int((time.perf_counter() - start) * 1000)
-            
+
             # Assurer le format ToolResult
             if isinstance(result, dict) and "success" in result:
                 result["meta"]["duration_ms"] = elapsed_ms
@@ -186,7 +256,7 @@ class ToolRegistry:
             else:
                 # Legacy format - convertir
                 return ok(result, duration_ms=elapsed_ms)
-                
+
         except Exception as e:
             logger.error(f"Tool execution error ({name}): {e}")
             return fail("E_TOOL_EXEC", str(e))
@@ -194,10 +264,11 @@ class ToolRegistry:
 
 # ===== BUILTIN TOOLS =====
 
+
 async def execute_command(command: str, timeout: int = 30) -> ToolResult:
     """
     Exécute une commande shell de manière sécurisée.
-    
+
     - Mode sandbox (défaut): Docker isolé, réseau désactivé
     - Mode host: exécution directe (dangereux)
     - Allowlist obligatoire pour les commandes
@@ -206,32 +277,39 @@ async def execute_command(command: str, timeout: int = 30) -> ToolResult:
     allowed, reason = is_command_allowed(command)
     if not allowed:
         return fail("E_CMD_NOT_ALLOWED", reason, command=command)
-    
+
     # 2. Construire la commande selon le mode
     use_sandbox = settings.EXECUTE_MODE == "sandbox"
-    
+
     if use_sandbox:
         # S'assurer que le workspace existe
         os.makedirs(settings.WORKSPACE_DIR, exist_ok=True)
-        
+
         docker_cmd = [
-            "docker", "run", "--rm",
+            "docker",
+            "run",
+            "--rm",
             "--network=none",
             f"--memory={settings.SANDBOX_MEMORY}",
             f"--cpus={settings.SANDBOX_CPUS}",
             "--read-only",
-            "--tmpfs", "/tmp:rw,noexec,nosuid,size=100m",
-            "-v", f"{settings.WORKSPACE_DIR}:/workspace:rw",
-            "-w", "/workspace",
+            "--tmpfs",
+            "/tmp:rw,noexec,nosuid,size=100m",
+            "-v",
+            f"{settings.WORKSPACE_DIR}:/workspace:rw",
+            "-w",
+            "/workspace",
             settings.SANDBOX_IMAGE,
-            "bash", "-lc", command
+            "bash",
+            "-lc",
+            command,
         ]
         exec_command = docker_cmd
         shell = False
     else:
         exec_command = command
         shell = True
-    
+
     # 3. Exécuter
     try:
         if shell:
@@ -239,48 +317,43 @@ async def execute_command(command: str, timeout: int = 30) -> ToolResult:
                 exec_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=settings.WORKSPACE_DIR
+                cwd=settings.WORKSPACE_DIR,
             )
         else:
             process = await asyncio.create_subprocess_exec(
-                *exec_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                *exec_command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-        
-        stdout, stderr = await asyncio.wait_for(
-            process.communicate(),
-            timeout=timeout
-        )
-        
+
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+
         stdout_str = stdout.decode("utf-8", errors="replace")
         stderr_str = stderr.decode("utf-8", errors="replace")
         returncode = process.returncode
-        
+
         # Succès si returncode == 0
         if returncode == 0:
             return ok(
-                {
-                    "stdout": stdout_str,
-                    "stderr": stderr_str,
-                    "returncode": returncode
-                },
+                {"stdout": stdout_str, "stderr": stderr_str, "returncode": returncode},
                 command=command,
-                sandbox=use_sandbox
+                sandbox=use_sandbox,
             )
         else:
             return fail(
                 "E_CMD_FAILED",
                 f"Commande échouée (code {returncode}): {stderr_str[:500]}",
                 command=command,
-                sandbox=use_sandbox
+                sandbox=use_sandbox,
             )
-            
+
     except asyncio.TimeoutError:
         return fail("E_TIMEOUT", f"Timeout après {timeout}s", command=command, sandbox=use_sandbox)
     except FileNotFoundError:
         if use_sandbox:
-            return fail("E_DOCKER_NOT_FOUND", "Docker non disponible. Installez Docker ou passez EXECUTE_MODE=host", command=command)
+            return fail(
+                "E_DOCKER_NOT_FOUND",
+                "Docker non disponible. Installez Docker ou passez EXECUTE_MODE=host",
+                command=command,
+            )
         return fail("E_CMD_NOT_FOUND", "Commande non trouvée", command=command)
     except Exception as e:
         return fail("E_CMD_ERROR", str(e), command=command, sandbox=use_sandbox)
@@ -292,16 +365,18 @@ def read_file(path: str) -> ToolResult:
         # Résoudre le chemin (relatif au workspace si pas absolu)
         if not os.path.isabs(path):
             path = os.path.join(settings.WORKSPACE_DIR, path)
-        
+
         with open(path, "r", encoding="utf-8") as f:
             content = f.read()
-        
-        return ok({
-            "content": content,
-            "path": path,
-            "size": len(content),
-            "lines": content.count("\n") + 1
-        })
+
+        return ok(
+            {
+                "content": content,
+                "path": path,
+                "size": len(content),
+                "lines": content.count("\n") + 1,
+            }
+        )
     except FileNotFoundError:
         return fail("E_FILE_NOT_FOUND", f"Fichier non trouvé: {path}")
     except PermissionError:
@@ -318,28 +393,24 @@ def write_file(path: str, content: str, append: bool = False) -> ToolResult:
     # Résoudre le chemin
     if not os.path.isabs(path):
         path = os.path.join(settings.WORKSPACE_DIR, path)
-    
+
     # Vérifier que le chemin est dans le workspace
     allowed, reason = is_path_in_workspace(path)
     if not allowed:
         return fail("E_PATH_FORBIDDEN", reason)
-    
+
     if not settings.WORKSPACE_ALLOW_WRITE:
         return fail("E_WRITE_DISABLED", "Écriture désactivée dans la configuration")
-    
+
     try:
         # Créer les répertoires parents si nécessaire
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        
+
         mode = "a" if append else "w"
         with open(path, mode, encoding="utf-8") as f:
             f.write(content)
-        
-        return ok({
-            "path": path,
-            "size": len(content),
-            "mode": "append" if append else "write"
-        })
+
+        return ok({"path": path, "size": len(content), "mode": "append" if append else "write"})
     except PermissionError:
         return fail("E_PERMISSION", f"Permission refusée: {path}")
     except Exception as e:
@@ -351,20 +422,18 @@ def list_directory(path: str = ".") -> ToolResult:
     try:
         if not os.path.isabs(path):
             path = os.path.join(settings.WORKSPACE_DIR, path)
-        
+
         entries = []
         for entry in os.scandir(path):
-            entries.append({
-                "name": entry.name,
-                "is_dir": entry.is_dir(),
-                "size": entry.stat().st_size if entry.is_file() else 0,
-            })
-        
-        return ok({
-            "path": path,
-            "entries": entries,
-            "count": len(entries)
-        })
+            entries.append(
+                {
+                    "name": entry.name,
+                    "is_dir": entry.is_dir(),
+                    "size": entry.stat().st_size if entry.is_file() else 0,
+                }
+            )
+
+        return ok({"path": path, "entries": entries, "count": len(entries)})
     except FileNotFoundError:
         return fail("E_DIR_NOT_FOUND", f"Répertoire non trouvé: {path}")
     except Exception as e:
@@ -374,39 +443,47 @@ def list_directory(path: str = ".") -> ToolResult:
 def get_system_info() -> ToolResult:
     """Informations système"""
     import platform
+
     try:
         import psutil
-        return ok({
-            "os": platform.system(),
-            "release": platform.release(),
-            "hostname": platform.node(),
-            "cpu_count": psutil.cpu_count(),
-            "cpu_percent": psutil.cpu_percent(),
-            "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
-            "memory_used_percent": psutil.virtual_memory().percent,
-            "disk_usage_percent": psutil.disk_usage("/").percent,
-            "workspace": settings.WORKSPACE_DIR,
-            "execute_mode": settings.EXECUTE_MODE,
-        })
+
+        return ok(
+            {
+                "os": platform.system(),
+                "release": platform.release(),
+                "hostname": platform.node(),
+                "cpu_count": psutil.cpu_count(),
+                "cpu_percent": psutil.cpu_percent(),
+                "memory_total_gb": round(psutil.virtual_memory().total / (1024**3), 2),
+                "memory_used_percent": psutil.virtual_memory().percent,
+                "disk_usage_percent": psutil.disk_usage("/").percent,
+                "workspace": settings.WORKSPACE_DIR,
+                "execute_mode": settings.EXECUTE_MODE,
+            }
+        )
     except ImportError:
-        return ok({
-            "os": platform.system(),
-            "release": platform.release(),
-            "hostname": platform.node(),
-            "workspace": settings.WORKSPACE_DIR,
-            "execute_mode": settings.EXECUTE_MODE,
-        })
+        return ok(
+            {
+                "os": platform.system(),
+                "release": platform.release(),
+                "hostname": platform.node(),
+                "workspace": settings.WORKSPACE_DIR,
+                "execute_mode": settings.EXECUTE_MODE,
+            }
+        )
 
 
 def get_datetime() -> ToolResult:
     """Date et heure actuelles"""
     now = datetime.now()
-    return ok({
-        "datetime": now.isoformat(),
-        "date": now.strftime("%Y-%m-%d"),
-        "time": now.strftime("%H:%M:%S"),
-        "timestamp": int(now.timestamp()),
-    })
+    return ok(
+        {
+            "datetime": now.isoformat(),
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "timestamp": int(now.timestamp()),
+        }
+    )
 
 
 def calculate(expression: str) -> ToolResult:
@@ -414,7 +491,7 @@ def calculate(expression: str) -> ToolResult:
     try:
         import ast
         import operator
-        
+
         # Opérateurs autorisés
         ops = {
             ast.Add: operator.add,
@@ -426,7 +503,7 @@ def calculate(expression: str) -> ToolResult:
             ast.Pow: operator.pow,
             ast.USub: operator.neg,
         }
-        
+
         def eval_expr(node):
             if isinstance(node, ast.Constant):
                 return node.value
@@ -436,14 +513,11 @@ def calculate(expression: str) -> ToolResult:
                 return ops[type(node.op)](eval_expr(node.operand))
             else:
                 raise ValueError(f"Opération non supportée: {type(node)}")
-        
-        tree = ast.parse(expression, mode='eval')
+
+        tree = ast.parse(expression, mode="eval")
         result = eval_expr(tree.body)
-        
-        return ok({
-            "expression": expression,
-            "result": result
-        })
+
+        return ok({"expression": expression, "result": result})
     except Exception as e:
         return fail("E_CALC_ERROR", str(e))
 
@@ -454,7 +528,7 @@ async def http_request(url: str, method: str = "GET", data: Optional[Dict] = Non
         import httpx
     except ImportError:
         return fail("E_IMPORT", "httpx non installé")
-    
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             if method.upper() == "GET":
@@ -463,12 +537,14 @@ async def http_request(url: str, method: str = "GET", data: Optional[Dict] = Non
                 response = await client.post(url, json=data)
             else:
                 return fail("E_HTTP_METHOD", f"Méthode non supportée: {method}")
-            
-            return ok({
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
-                "body": response.text[:10000],
-            })
+
+            return ok(
+                {
+                    "status_code": response.status_code,
+                    "headers": dict(response.headers),
+                    "body": response.text[:10000],
+                }
+            )
     except httpx.TimeoutException:
         return fail("E_HTTP_TIMEOUT", "Timeout HTTP")
     except Exception as e:
@@ -478,23 +554,231 @@ async def http_request(url: str, method: str = "GET", data: Optional[Dict] = Non
 def search_files(pattern: str, path: str = ".") -> ToolResult:
     """Recherche des fichiers par pattern"""
     import glob
-    
+
     try:
         if not os.path.isabs(path):
             path = os.path.join(settings.WORKSPACE_DIR, path)
-        
+
         matches = glob.glob(os.path.join(path, "**", pattern), recursive=True)
-        return ok({
-            "pattern": pattern,
-            "path": path,
-            "matches": matches[:100],
-            "count": len(matches)
-        })
+        return ok(
+            {"pattern": pattern, "path": path, "matches": matches[:100], "count": len(matches)}
+        )
     except Exception as e:
         return fail("E_SEARCH_ERROR", str(e))
 
 
+# ===== RECOVERY TOOLS (v6.2) =====
+
+# Bases allowlistées pour la recherche de répertoires
+SEARCH_ALLOWED_BASES = [
+    "/home",
+    "/workspace",
+    "/tmp",
+    "/var/www",
+    "/opt",
+    settings.WORKSPACE_DIR,
+]
+
+# Profondeur et limite maximales
+SEARCH_MAX_DEPTH = 3
+SEARCH_MAX_RESULTS = 5
+
+
+def search_directory(name: str, base: str = None, max_depth: int = SEARCH_MAX_DEPTH) -> ToolResult:
+    """
+    Recherche sécurisée de répertoires.
+    Utilisé automatiquement en cas d'erreur E_DIR_NOT_FOUND pour tenter une récupération.
+
+    SÉCURITÉ:
+    - Base allowlistée uniquement
+    - Profondeur limitée (défaut: 3)
+    - Nombre de résultats limité (5)
+    - Pas de scan global illimité
+
+    Args:
+        name: Nom du répertoire à chercher (exact ou partiel)
+        base: Répertoire de base (défaut: WORKSPACE_DIR, doit être dans l'allowlist)
+        max_depth: Profondeur maximale de recherche (max: 3)
+
+    Returns:
+        ToolResult avec la liste des répertoires trouvés
+    """
+    # Valider et définir la base
+    if base is None:
+        base = settings.WORKSPACE_DIR
+
+    # Résoudre le chemin
+    try:
+        base_resolved = str(Path(base).resolve())
+    except Exception:
+        return fail("E_INVALID_PATH", f"Chemin invalide: {base}")
+
+    # Vérifier que la base est dans l'allowlist
+    base_allowed = False
+    for allowed_base in SEARCH_ALLOWED_BASES:
+        try:
+            allowed_resolved = str(Path(allowed_base).resolve())
+            if base_resolved.startswith(allowed_resolved) or base_resolved == allowed_resolved:
+                base_allowed = True
+                break
+        except Exception:
+            continue
+
+    if not base_allowed:
+        return fail(
+            "E_BASE_NOT_ALLOWED",
+            f"Base non autorisée: {base}. Bases autorisées: {', '.join(SEARCH_ALLOWED_BASES[:3])}...",
+        )
+
+    # Limiter la profondeur
+    max_depth = min(max_depth, SEARCH_MAX_DEPTH)
+
+    # Vérifier que la base existe
+    if not os.path.isdir(base_resolved):
+        return fail("E_BASE_NOT_FOUND", f"Répertoire de base non trouvé: {base_resolved}")
+
+    # Rechercher les répertoires
+    matches = []
+    name_lower = name.lower()
+
+    def search_recursive(current_path: str, current_depth: int):
+        if current_depth > max_depth or len(matches) >= SEARCH_MAX_RESULTS:
+            return
+
+        try:
+            for entry in os.scandir(current_path):
+                if len(matches) >= SEARCH_MAX_RESULTS:
+                    return
+
+                try:
+                    if entry.is_dir(follow_symlinks=False):
+                        entry_name = entry.name.lower()
+
+                        # Match exact ou partiel
+                        if name_lower == entry_name or name_lower in entry_name:
+                            matches.append(
+                                {
+                                    "path": entry.path,
+                                    "name": entry.name,
+                                    "depth": current_depth,
+                                }
+                            )
+
+                        # Continuer la recherche dans les sous-répertoires
+                        if current_depth < max_depth:
+                            search_recursive(entry.path, current_depth + 1)
+                except (PermissionError, OSError):
+                    continue
+        except (PermissionError, OSError):
+            pass
+
+    search_recursive(base_resolved, 0)
+
+    if matches:
+        return ok(
+            {
+                "query": name,
+                "base": base_resolved,
+                "max_depth": max_depth,
+                "matches": matches,
+                "count": len(matches),
+                "suggestion": matches[0]["path"] if matches else None,
+            }
+        )
+    else:
+        return ok(
+            {
+                "query": name,
+                "base": base_resolved,
+                "max_depth": max_depth,
+                "matches": [],
+                "count": 0,
+                "suggestion": None,
+            }
+        )
+
+
+# ===== LLM MODELS TOOL =====
+
+
+async def list_llm_models() -> ToolResult:
+    """
+    Liste les modèles LLM disponibles via Ollama.
+    Retourne une réponse formatée et structurée pour l'affichage.
+    """
+    try:
+        import httpx
+        from app.core.config import settings
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{settings.OLLAMA_BASE_URL}/api/tags")
+
+            if response.status_code != 200:
+                return fail("E_OLLAMA_ERROR", f"Erreur Ollama: HTTP {response.status_code}")
+
+            data = response.json()
+            models = data.get("models", [])
+
+            # Catégoriser les modèles
+            categories = {
+                "general": [],
+                "code": [],
+                "vision": [],
+                "embedding": [],
+                "safety": [],
+                "cloud": [],
+            }
+
+            for model in models:
+                name = model.get("name", "").lower()
+                size = model.get("size", 0)
+
+                model_info = {
+                    "name": model.get("name"),
+                    "size": size,
+                    "modified_at": model.get("modified_at"),
+                    "available": True,
+                }
+
+                # Classification
+                if size < 1000 or "cloud" in name or "gemini" in name or "kimi" in name:
+                    categories["cloud"].append(model_info)
+                elif "embed" in name or "nomic" in name or "bge" in name or "mxbai" in name:
+                    categories["embedding"].append(model_info)
+                elif "vision" in name or "-vl" in name or "vl:" in name:
+                    categories["vision"].append(model_info)
+                elif "coder" in name or "code" in name or "deepseek" in name:
+                    categories["code"].append(model_info)
+                elif "safeguard" in name or "guard" in name or "safety" in name:
+                    categories["safety"].append(model_info)
+                else:
+                    categories["general"].append(model_info)
+
+            # Statistiques
+            total = len(models)
+            local_count = sum(1 for m in models if m.get("size", 0) > 1000)
+            cloud_count = sum(1 for m in models if m.get("size", 0) < 1000)
+            total_size = sum(m.get("size", 0) for m in models)
+
+            return ok(
+                {
+                    "total": total,
+                    "local_count": local_count,
+                    "cloud_count": cloud_count,
+                    "total_size_gb": round(total_size / (1024**3), 1),
+                    "categories": {k: v for k, v in categories.items() if v},
+                    "models": models,
+                }
+            )
+
+    except ImportError:
+        return fail("E_IMPORT", "httpx non installé")
+    except Exception as e:
+        return fail("E_MODELS_ERROR", str(e))
+
+
 # ===== QA TOOLS (v6.1) =====
+
 
 async def git_status() -> ToolResult:
     """Affiche le statut Git du workspace"""
@@ -515,12 +799,14 @@ async def run_tests(target: str = "backend") -> ToolResult:
     commands = {
         "backend": "python3 -m pytest -q --tb=short",
         "frontend": "npm run test --if-present",
-        "all": "python3 -m pytest -q --tb=short && npm run test --if-present"
+        "all": "python3 -m pytest -q --tb=short && npm run test --if-present",
     }
-    
+
     if target not in commands:
-        return fail("E_INVALID_TARGET", f"Target invalide: {target}. Utiliser: backend, frontend, all")
-    
+        return fail(
+            "E_INVALID_TARGET", f"Target invalide: {target}. Utiliser: backend, frontend, all"
+        )
+
     return await execute_command(commands[target], timeout=120)
 
 
@@ -532,12 +818,12 @@ async def run_lint(target: str = "backend") -> ToolResult:
     commands = {
         "backend": "ruff check . --output-format=concise",
         "frontend": "npm run lint --if-present",
-        "all": "ruff check . --output-format=concise; npm run lint --if-present"
+        "all": "ruff check . --output-format=concise; npm run lint --if-present",
     }
-    
+
     if target not in commands:
         return fail("E_INVALID_TARGET", f"Target invalide: {target}")
-    
+
     return await execute_command(commands[target], timeout=60)
 
 
@@ -551,18 +837,18 @@ async def run_format(target: str = "backend", check_only: bool = True) -> ToolRe
         commands = {
             "backend": "black . --check --diff",
             "frontend": "npm run format:check --if-present",
-            "all": "black . --check --diff; npm run format:check --if-present"
+            "all": "black . --check --diff; npm run format:check --if-present",
         }
     else:
         commands = {
             "backend": "black .",
             "frontend": "npm run format --if-present",
-            "all": "black .; npm run format --if-present"
+            "all": "black .; npm run format --if-present",
         }
-    
+
     if target not in commands:
         return fail("E_INVALID_TARGET", f"Target invalide: {target}")
-    
+
     return await execute_command(commands[target], timeout=60)
 
 
@@ -574,12 +860,12 @@ async def run_build(target: str = "frontend") -> ToolResult:
     commands = {
         "backend": "python3 -m py_compile *.py",  # Vérification syntaxe
         "frontend": "npm run build",
-        "all": "python3 -m py_compile *.py; npm run build"
+        "all": "python3 -m py_compile *.py; npm run build",
     }
-    
+
     if target not in commands:
         return fail("E_INVALID_TARGET", f"Target invalide: {target}")
-    
+
     return await execute_command(commands[target], timeout=180)
 
 
@@ -590,12 +876,12 @@ async def run_typecheck(target: str = "backend") -> ToolResult:
     """
     commands = {
         "backend": "mypy . --ignore-missing-imports --no-error-summary",
-        "frontend": "npm run typecheck --if-present"
+        "frontend": "npm run typecheck --if-present",
     }
-    
+
     if target not in commands:
         return fail("E_INVALID_TARGET", f"Target invalide: {target}")
-    
+
     return await execute_command(commands[target], timeout=120)
 
 
@@ -609,32 +895,20 @@ BUILTIN_TOOLS.register(
     execute_command,
     "Exécute une commande shell (sandbox Docker par défaut, allowlist obligatoire)",
     "system",
-    {"command": "string", "timeout": "int (optional, default=30)"}
+    {"command": "string", "timeout": "int (optional, default=30)"},
 )
 
 BUILTIN_TOOLS.register(
-    "get_system_info",
-    get_system_info,
-    "Obtient les informations système",
-    "system",
-    {}
+    "get_system_info", get_system_info, "Obtient les informations système", "system", {}
 )
 
 BUILTIN_TOOLS.register(
-    "get_datetime",
-    get_datetime,
-    "Obtient la date et l'heure actuelles",
-    "utility",
-    {}
+    "get_datetime", get_datetime, "Obtient la date et l'heure actuelles", "utility", {}
 )
 
 # Outils filesystem
 BUILTIN_TOOLS.register(
-    "read_file",
-    read_file,
-    "Lit le contenu d'un fichier",
-    "filesystem",
-    {"path": "string"}
+    "read_file", read_file, "Lit le contenu d'un fichier", "filesystem", {"path": "string"}
 )
 
 BUILTIN_TOOLS.register(
@@ -642,7 +916,7 @@ BUILTIN_TOOLS.register(
     write_file,
     "Écrit dans un fichier (WORKSPACE_DIR uniquement)",
     "filesystem",
-    {"path": "string", "content": "string", "append": "bool (optional)"}
+    {"path": "string", "content": "string", "append": "bool (optional)"},
 )
 
 BUILTIN_TOOLS.register(
@@ -650,7 +924,7 @@ BUILTIN_TOOLS.register(
     list_directory,
     "Liste le contenu d'un répertoire",
     "filesystem",
-    {"path": "string (optional)"}
+    {"path": "string (optional)"},
 )
 
 BUILTIN_TOOLS.register(
@@ -658,7 +932,15 @@ BUILTIN_TOOLS.register(
     search_files,
     "Recherche des fichiers par pattern",
     "filesystem",
-    {"pattern": "string", "path": "string (optional)"}
+    {"pattern": "string", "path": "string (optional)"},
+)
+
+BUILTIN_TOOLS.register(
+    "search_directory",
+    search_directory,
+    "Recherche sécurisée de répertoires (allowlist, profondeur limitée)",
+    "filesystem",
+    {"name": "string", "base": "string (optional)", "max_depth": "int (optional, max=3)"},
 )
 
 # Outils utility
@@ -667,7 +949,7 @@ BUILTIN_TOOLS.register(
     calculate,
     "Évalue une expression mathématique",
     "utility",
-    {"expression": "string"}
+    {"expression": "string"},
 )
 
 BUILTIN_TOOLS.register(
@@ -675,24 +957,23 @@ BUILTIN_TOOLS.register(
     http_request,
     "Effectue une requête HTTP",
     "network",
-    {"url": "string", "method": "string (optional)", "data": "dict (optional)"}
+    {"url": "string", "method": "string (optional)", "data": "dict (optional)"},
+)
+
+# Outil LLM Models
+BUILTIN_TOOLS.register(
+    "list_llm_models",
+    list_llm_models,
+    "Liste les modèles LLM disponibles avec catégorisation (général, code, vision, embedding, cloud)",
+    "system",
+    {},
 )
 
 # Outils QA (v6.1)
-BUILTIN_TOOLS.register(
-    "git_status",
-    git_status,
-    "Affiche le statut Git du workspace",
-    "qa",
-    {}
-)
+BUILTIN_TOOLS.register("git_status", git_status, "Affiche le statut Git du workspace", "qa", {})
 
 BUILTIN_TOOLS.register(
-    "git_diff",
-    git_diff,
-    "Affiche les différences Git",
-    "qa",
-    {"staged": "bool (optional)"}
+    "git_diff", git_diff, "Affiche les différences Git", "qa", {"staged": "bool (optional)"}
 )
 
 BUILTIN_TOOLS.register(
@@ -700,7 +981,7 @@ BUILTIN_TOOLS.register(
     run_tests,
     "Exécute les tests (pytest pour backend, npm test pour frontend)",
     "qa",
-    {"target": "string: backend|frontend|all"}
+    {"target": "string: backend|frontend|all"},
 )
 
 BUILTIN_TOOLS.register(
@@ -708,7 +989,7 @@ BUILTIN_TOOLS.register(
     run_lint,
     "Exécute le linter (ruff pour backend, npm lint pour frontend)",
     "qa",
-    {"target": "string: backend|frontend|all"}
+    {"target": "string: backend|frontend|all"},
 )
 
 BUILTIN_TOOLS.register(
@@ -716,15 +997,11 @@ BUILTIN_TOOLS.register(
     run_format,
     "Vérifie le formatage du code (black pour backend)",
     "qa",
-    {"target": "string: backend|frontend|all", "check_only": "bool (optional, default=true)"}
+    {"target": "string: backend|frontend|all", "check_only": "bool (optional, default=true)"},
 )
 
 BUILTIN_TOOLS.register(
-    "run_build",
-    run_build,
-    "Build le projet",
-    "qa",
-    {"target": "string: backend|frontend|all"}
+    "run_build", run_build, "Build le projet", "qa", {"target": "string: backend|frontend|all"}
 )
 
 BUILTIN_TOOLS.register(
@@ -732,9 +1009,18 @@ BUILTIN_TOOLS.register(
     run_typecheck,
     "Exécute la vérification de types (mypy pour backend)",
     "qa",
-    {"target": "string: backend|frontend"}
+    {"target": "string: backend|frontend"},
 )
 
 
 # Export pour compatibilité
-__all__ = ["BUILTIN_TOOLS", "ToolRegistry", "ToolResult", "ok", "fail"]
+__all__ = [
+    "BUILTIN_TOOLS",
+    "ToolRegistry",
+    "ToolResult",
+    "ok",
+    "fail",
+    "is_recoverable_error",
+    "RECOVERABLE_ERRORS",
+    "search_directory",
+]
