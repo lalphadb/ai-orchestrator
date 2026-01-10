@@ -30,7 +30,7 @@ class TestToolsRegistry:
     def test_categories_exist(self):
         """Les catégories doivent être présentes"""
         categories = BUILTIN_TOOLS.get_categories()
-        expected = {"system", "filesystem", "utility", "network", "qa"}
+        expected = {"system", "filesystem", "utility", "network", "qa", "governance"}
         assert set(categories) == expected
 
     def test_qa_tools_count(self):

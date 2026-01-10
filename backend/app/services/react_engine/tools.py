@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, List, Optional, TypedDict
 
 from app.core.config import settings
 from app.services.react_engine.secure_executor import secure_executor, ExecutionRole
+from app.services.react_engine.governance import governance_manager, ActionCategory
 
 # ===== SECURITY PATTERNS (AUDIT 2026-01-09) =====
 DANGEROUS_PATTERNS = [
@@ -995,6 +996,86 @@ BUILTIN_TOOLS.register(
     "Récupère les entrées d'audit des commandes exécutées",
     "system",
     {"last_n": "int (optional, default=20): Nombre d'entrées à récupérer"},
+)
+
+
+
+# ===== GOVERNANCE TOOLS (v7) =====
+
+def get_action_history(last_n: int = 20) -> ToolResult:
+    """
+    Récupère l'historique des actions exécutées.
+    
+    Args:
+        last_n: Nombre d'entrées à récupérer (défaut 20)
+    """
+    try:
+        history = governance_manager.get_action_history(last_n=last_n)
+        return ok({
+            "actions": history,
+            "count": len(history),
+        })
+    except Exception as e:
+        return fail("E_GOVERNANCE_ERROR", str(e))
+
+
+def get_pending_verifications() -> ToolResult:
+    """
+    Récupère les actions en attente de vérification.
+    """
+    try:
+        pending = governance_manager.get_pending_verifications()
+        return ok({
+            "pending": pending,
+            "count": len(pending),
+        })
+    except Exception as e:
+        return fail("E_GOVERNANCE_ERROR", str(e))
+
+
+async def rollback_action(action_id: str) -> ToolResult:
+    """
+    Effectue le rollback d'une action précédente.
+    
+    Args:
+        action_id: ID de l'action à annuler
+    """
+    try:
+        success, message = await governance_manager.rollback(action_id)
+        if success:
+            return ok({
+                "rolled_back": action_id,
+                "message": message,
+            })
+        else:
+            return fail("E_ROLLBACK_FAILED", message)
+    except Exception as e:
+        return fail("E_ROLLBACK_ERROR", str(e))
+
+
+# ===== GOVERNANCE TOOLS REGISTRATION =====
+BUILTIN_TOOLS.register(
+    "get_action_history",
+    get_action_history,
+    "Récupère l'historique des actions pour audit",
+    "governance",
+    {"last_n": "int (optional, default=20): Nombre d'entrées"},
+)
+
+BUILTIN_TOOLS.register(
+    "get_pending_verifications",
+    get_pending_verifications,
+    "Liste les actions en attente de vérification",
+    "governance",
+    {},
+)
+
+BUILTIN_TOOLS.register(
+    "rollback_action",
+    rollback_action,
+    "Annule une action précédente (si rollback disponible)",
+    "governance",
+    {"action_id": "string: ID de l'action à annuler"},
 )
 
 
