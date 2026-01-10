@@ -391,8 +391,31 @@ function renderContent(content) {
     return ''
   }
   
+  // NOUVEAU: Nettoyer le JSON brut des outils qui s'affiche parfois
+  let cleanedContent = content
+  
+  // Enlever les blocs JSON bruts de type {"tool": "...", "output": {...}}
+  cleanedContent = cleanedContent.replace(
+    /\{\s*"tool"\s*:\s*"[^"]*"\s*,\s*"(?:input|output)"\s*:\s*\{[^}]*\}[^}]*\}/g,
+    ''
+  )
+  
+  // Enlever les lignes JSON brutes isolées qui commencent par { et finissent par }
+  cleanedContent = cleanedContent.replace(
+    /^\s*\{\s*"(?:tool|success|data|error|meta|duration)"[^\n]*\}\s*$/gm,
+    ''
+  )
+  
+  // Nettoyer les lignes vides multiples
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n').trim()
+  
+  // Si après nettoyage il ne reste rien, afficher un message générique
+  if (!cleanedContent.trim()) {
+    return '<em class="text-gray-500">Tâche exécutée avec succès</em>'
+  }
+  
   // Traitement Markdown
-  if (isMarkdown(content)) {
+  if (isMarkdown(cleanedContent)) {
     marked.setOptions({
       breaks: true,
       gfm: true,
@@ -401,11 +424,11 @@ function renderContent(content) {
       sanitize: false
     })
     
-    return marked.parse(content)
+    return marked.parse(cleanedContent)
   }
   
   // Texte brut: échapper HTML et préserver les sauts de ligne
-  return escapeHtml(content).replace(/\n/g, '<br>')
+  return escapeHtml(cleanedContent).replace(/\n/g, '<br>')
 }
 
 /**

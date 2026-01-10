@@ -216,13 +216,14 @@ export const useChatStore = defineStore('chat', () => {
       // Récupérer le contenu final
       const finalContent = data.response || data.content || ''
       
-      // CORRECTION: Ne remplacer que si on a du contenu valide
-      // Sinon garder le contenu streamé
+      // TOUJOURS utiliser la réponse finale si elle existe
+      // Cela évite d'afficher le JSON brut accumulé pendant le streaming
       if (finalContent && finalContent.trim()) {
         lastMsg.content = finalContent
+      } else if (currentRun.value?.tokens) {
+        // Fallback: utiliser les tokens streamés si pas de réponse finale
+        lastMsg.content = currentRun.value.tokens
       }
-      // Si pas de contenu final mais on avait du streaming, garder le streaming
-      // (Ne pas écraser avec une chaîne vide)
       
       lastMsg.streaming = false
       lastMsg.tools_used = data.tools_used || []
