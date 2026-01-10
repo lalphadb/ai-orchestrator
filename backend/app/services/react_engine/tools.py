@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypedDict
 
 from app.core.config import settings
+from app.services.react_engine.secure_executor import secure_executor, ExecutionRole
 
 # ===== SECURITY PATTERNS (AUDIT 2026-01-09) =====
 DANGEROUS_PATTERNS = [
@@ -265,98 +266,71 @@ class ToolRegistry:
 # ===== BUILTIN TOOLS =====
 
 
-async def execute_command(command: str, timeout: int = 30) -> ToolResult:
+async def execute_command(command: str, timeout: int = 30, role: str = "operator") -> ToolResult:
     """
-    Exécute une commande shell de manière sécurisée.
+    Exécute une commande de manière SÉCURISÉE via SecureExecutor v7.
 
-    - Mode sandbox (défaut): Docker isolé, réseau désactivé
-    - Mode host: exécution directe (dangereux)
-    - Allowlist obligatoire pour les commandes
+    SÉCURITÉ:
+    - JAMAIS de shell=True
+    - Parsing argv strict
+    - Allowlist de commandes
+    - Audit complet
+
+    Args:
+        command: Commande à exécuter
+        timeout: Timeout en secondes (défaut 30)
+        role: Rôle d'exécution (viewer, operator, admin)
     """
-    # 1. Vérifier allowlist
-    allowed, reason = is_command_allowed(command)
-    if not allowed:
-        return fail("E_CMD_NOT_ALLOWED", reason, command=command)
+    # Convertir le rôle string en enum
+    role_map = {
+        "viewer": ExecutionRole.VIEWER,
+        "operator": ExecutionRole.OPERATOR,
+        "admin": ExecutionRole.ADMIN,
+    }
+    exec_role = role_map.get(role.lower(), ExecutionRole.OPERATOR)
 
-    # 2. Construire la commande selon le mode
-    use_sandbox = settings.EXECUTE_MODE == "sandbox"
+    # Utiliser le SecureExecutor (JAMAIS shell=True)
+    result = await secure_executor.execute(
+        command=command,
+        role=exec_role,
+        timeout=timeout,
+        cwd=settings.WORKSPACE_DIR
+    )
 
-    if use_sandbox:
-        # S'assurer que le workspace existe
-        os.makedirs(settings.WORKSPACE_DIR, exist_ok=True)
-
-        docker_cmd = [
-            "docker",
-            "run",
-            "--rm",
-            "--network=none",
-            f"--memory={settings.SANDBOX_MEMORY}",
-            f"--cpus={settings.SANDBOX_CPUS}",
-            "--read-only",
-            "--tmpfs",
-            "/tmp:rw,noexec,nosuid,size=100m",
-            "-v",
-            f"{settings.WORKSPACE_DIR}:/workspace:rw",
-            "-w",
-            "/workspace",
-            settings.SANDBOX_IMAGE,
-            "bash",
-            "-lc",
-            command,
-        ]
-        exec_command = docker_cmd
-        shell = False
+    # Convertir en ToolResult pour compatibilité
+    if result.success:
+        return ok(
+            {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "returncode": result.returncode,
+            },
+            command=command,
+            sandbox=False,
+        )
     else:
-        exec_command = command
-        shell = True
+        return fail(
+            result.error_code or "E_CMD_ERROR",
+            result.error_message or "Erreur inconnue",
+            command=command,
+        )
 
-    # 3. Exécuter
+
+def get_audit_log(last_n: int = 20) -> ToolResult:
+    """
+    Récupère les dernières entrées d'audit des commandes exécutées.
+    
+    Args:
+        last_n: Nombre d'entrées à récupérer (défaut 20)
+    """
     try:
-        if shell:
-            process = await asyncio.create_subprocess_shell(
-                exec_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=settings.WORKSPACE_DIR,
-            )
-        else:
-            process = await asyncio.create_subprocess_exec(
-                *exec_command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-
-        stdout_str = stdout.decode("utf-8", errors="replace")
-        stderr_str = stderr.decode("utf-8", errors="replace")
-        returncode = process.returncode
-
-        # Succès si returncode == 0
-        if returncode == 0:
-            return ok(
-                {"stdout": stdout_str, "stderr": stderr_str, "returncode": returncode},
-                command=command,
-                sandbox=use_sandbox,
-            )
-        else:
-            return fail(
-                "E_CMD_FAILED",
-                f"Commande échouée (code {returncode}): {stderr_str[:500]}",
-                command=command,
-                sandbox=use_sandbox,
-            )
-
-    except asyncio.TimeoutError:
-        return fail("E_TIMEOUT", f"Timeout après {timeout}s", command=command, sandbox=use_sandbox)
-    except FileNotFoundError:
-        if use_sandbox:
-            return fail(
-                "E_DOCKER_NOT_FOUND",
-                "Docker non disponible. Installez Docker ou passez EXECUTE_MODE=host",
-                command=command,
-            )
-        return fail("E_CMD_NOT_FOUND", "Commande non trouvée", command=command)
+        log = secure_executor.get_audit_log(last_n=last_n)
+        return ok({
+            "entries": log,
+            "count": len(log),
+        })
     except Exception as e:
-        return fail("E_CMD_ERROR", str(e), command=command, sandbox=use_sandbox)
+        return fail("E_AUDIT_ERROR", str(e))
 
 
 def read_file(path: str) -> ToolResult:
@@ -1010,6 +984,17 @@ BUILTIN_TOOLS.register(
     "Exécute la vérification de types (mypy pour backend)",
     "qa",
     {"target": "string: backend|frontend"},
+)
+
+
+
+# ===== AUDIT TOOL (v7 Security) =====
+BUILTIN_TOOLS.register(
+    "get_audit_log",
+    get_audit_log,
+    "Récupère les entrées d'audit des commandes exécutées",
+    "system",
+    {"last_n": "int (optional, default=20): Nombre d'entrées à récupérer"},
 )
 
 

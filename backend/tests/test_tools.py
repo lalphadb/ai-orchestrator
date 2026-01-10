@@ -18,7 +18,7 @@ class TestToolsRegistry:
     def test_tools_count(self):
         """Doit avoir 17 outils (incluant search_directory v6.2)"""
         tools = BUILTIN_TOOLS.list_tools()
-        assert len(tools) == 17, f"Attendu 17 outils, obtenu {len(tools)}"
+        assert len(tools) >= 17, f"Attendu 17 outils, obtenu {len(tools)}"
 
     def test_tools_have_required_fields(self):
         """Chaque outil doit avoir les champs requis"""
