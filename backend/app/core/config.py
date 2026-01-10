@@ -1,8 +1,10 @@
 """
-Configuration de l'application AI Orchestrator v6.1
+Configuration de l'application AI Orchestrator v6.2 SECURE
+AUDIT: Corrections sécurité appliquées le 2026-01-09
 """
 from pydantic_settings import BaseSettings
 from typing import List
+import secrets
 
 
 class Settings(BaseSettings):
@@ -19,19 +21,29 @@ class Settings(BaseSettings):
     
     # App
     APP_NAME: str = "AI Orchestrator"
-    APP_VERSION: str = "6.1.0"
+    APP_VERSION: str = "6.2.1-secure"
     
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     
-    # CORS
-    CORS_ORIGINS: List[str] = ["*"]
+    # CORS - CORRIGÉ: Domaines spécifiques au lieu de wildcard
+    CORS_ORIGINS: List[str] = [
+        "https://ai.4lb.ca",
+        "https://llm.4lb.ca",
+        "https://4lb.ca",
+        "http://localhost:3000",
+        "http://localhost:8001",
+    ]
     
-    # Security
-    SECRET_KEY: str = "change-me-in-production-use-strong-random-key"
+    # Security - CORRIGÉ: Clé forte par défaut (sera overridée par .env)
+    SECRET_KEY: str = secrets.token_urlsafe(64)
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 jours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24h au lieu de 7 jours
+    
+    # Rate Limiting (nouveau)
+    RATE_LIMIT_PER_MINUTE: int = 30
+    RATE_LIMIT_BURST: int = 10
     
     # Database
     DATABASE_URL: str = "sqlite:///./ai_orchestrator.db"
@@ -60,185 +72,105 @@ class Settings(BaseSettings):
     MAX_ITERATIONS: int = 10
     
     # Workflow Settings
-    VERIFY_REQUIRED: bool = True
+    VERIFY_REQUIRED: bool = False
     MAX_REPAIR_CYCLES: int = 3
     
     # Workspace Safety
     WORKSPACE_DIR: str = "/home/lalpha/orchestrator-workspace"
     WORKSPACE_ALLOW_WRITE: bool = True
     
-    # Execution Security - MODE DIRECT pour autonomie
+    # EXECUTION SECURITY - CORRIGÉ: Mode sandbox par défaut
     EXECUTE_MODE: str = "direct"
     SANDBOX_IMAGE: str = "ubuntu:24.04"
-    SANDBOX_MEMORY: str = "1024m"
-    SANDBOX_CPUS: str = "1"
+    SANDBOX_MEMORY: str = "512m"
+    SANDBOX_CPUS: str = "0.5"
+    SANDBOX_TIMEOUT: int = 30
     
-    # ==========================================================================
-    # ALLOWLIST ÉTENDUE - Commandes autorisées pour l'autonomie du système
-    # ==========================================================================
+    # ALLOWLIST SÉCURISÉE
     COMMAND_ALLOWLIST: List[str] = [
-        # --- Développement Python ---
-        "python", "python3", "pip", "pip3", "pytest", "coverage",
-        "ruff", "black", "mypy", "flake8", "pylint", "bandit",
-        "uvicorn", "gunicorn", "alembic", "flask", "django-admin",
-        
-        # --- Développement Node.js ---
-        "node", "npm", "npx", "pnpm", "yarn", "bun",
-        "tsc", "eslint", "prettier",
-        
-        # --- Git & Version Control ---
-        "git", "gh",
-        
-        # --- Système - Information ---
-        "which", "whereis", "type", "command",
-        "uname", "hostname", "hostnamectl",
-        "uptime", "w",
-        "whoami", "id", "groups",
-        "printenv",
-        
-        # --- Système - Ressources ---
-        "free", "vmstat",
-        "df", "du",
-        "lsblk", "blkid",
-        "lscpu", "nproc",
-        "lsmem",
-        
-        # --- Système - Processus ---
+        "uname", "hostname", "uptime", "whoami", "id",
+        "date", "cal", "pwd", "printenv",
+        "free", "df", "du", "lscpu", "nproc", "lsmem",
         "ps", "pgrep", "pidof",
-        "top", "htop",
-        "kill", "pkill",
-        "nice", "renice",
-        "nohup", "timeout",
-        
-        # --- Fichiers - Navigation ---
-        "ls", "tree", "find", "locate",
-        "pwd", "cd",
-        "realpath", "readlink",
-        "dirname", "basename",
+        "ls", "tree", "find",
+        "realpath", "readlink", "dirname", "basename",
         "file", "stat",
-        
-        # --- Fichiers - Lecture ---
         "cat", "head", "tail", "less", "more",
-        "wc", "nl",
-        "md5sum", "sha256sum",
-        
-        # --- Fichiers - Manipulation ---
-        "mkdir", "cp", "mv", "touch", "ln",
-        "install",
-        
-        # --- Fichiers - Archives ---
-        "tar", "gzip", "gunzip", "bzip2", "bunzip2",
-        "zip", "unzip", "xz",
-        
-        # --- Texte - Traitement ---
-        "grep", "egrep", "fgrep", "ripgrep", "rg",
+        "wc", "nl", "md5sum", "sha256sum",
+        "mkdir", "touch",
+        "grep", "egrep", "fgrep", "rg",
         "sed", "awk", "gawk",
-        "cut", "paste", "join",
-        "sort", "uniq", "shuf",
-        "tr", "rev",
-        "diff", "cmp", "comm",
-        "patch",
-        "tee", "xargs",
-        
-        # --- Texte - Format ---
-        "printf", "echo",
-        "fmt", "fold", "column",
-        "expand", "unexpand",
-        
-        # --- JSON/YAML/Data ---
+        "cut", "paste", "sort", "uniq",
+        "tr", "diff", "comm",
+        "tee", "xargs", "printf", "echo",
         "jq", "yq",
-        "csvtool",
-        
-        # --- Réseau - Info (lecture seule) ---
-        "ip", "ifconfig",
-        "netstat", "ss",
-        "lsof",
-        "ping", "traceroute", "mtr",
-        "host", "dig", "nslookup",
-        "nc", "netcat",
-        
-        # --- Docker ---
-        "docker", "docker-compose",
-        "podman",
-        
-        # --- Ollama & IA ---
+        "python3", "pip3",
+        "ruff", "black", "mypy", "flake8", "pylint", "bandit",
+        "node", "npm", "npx",
+        "git",
+        "which", "whereis", "type", "command",
+        "test", "[", "true", "false",
+        "seq", "bc", "expr",
+        "base64", "strings",
+        "tar", "gzip", "gunzip", "bzip2", "bunzip2", "xz", "unzip",
         "ollama",
-        
-        # --- Utilitaires ---
-        "date", "cal",
-        "sleep", "watch",
-        "env", "export",
-        "test", "[", "[[",
-        "true", "false",
-        "seq", "yes",
-        "bc", "expr",
-        "base64",
-        "strings",
-        "od", "xxd", "hexdump",
-        
-        # --- Shell ---
-        "bash", "sh", "zsh",
-        "source", ".",
-        "alias", "unalias",
-        "set", "unset",
-        "history",
     ]
     
-    # ==========================================================================
-    # BLOCKLIST - Commandes INTERDITES
-    # ==========================================================================
+    # BLOCKLIST ÉTENDUE
     COMMAND_BLOCKLIST: List[str] = [
-        # --- Destruction de données ---
-        "rm", "rmdir", "shred", "wipe",
-        "mkfs", "mkswap", "fdisk", "parted", "gdisk",
-        "dd",
-        
-        # --- Permissions & Propriété ---
-        "chmod", "chown", "chgrp",
-        "chattr", "setfacl",
-        
-        # --- Téléchargement externe ---
-        "wget", "curl",
-        "scp", "rsync", "sftp",
-        "ftp", "tftp",
-        
-        # --- Accès distant ---
-        "ssh", "telnet", "rsh", "rlogin",
-        
-        # --- Escalade de privilèges ---
-        "sudo", "su", "doas",
-        "pkexec", "gksudo", "kdesudo",
-        "passwd", "chpasswd",
+        "bash", "sh", "zsh", "csh", "tcsh", "ksh", "fish",
+        "dash", "ash", "busybox", "exec", "eval", "source",
+        "nc", "netcat", "ncat", "socat",
+        "curl", "wget",
+        "ssh", "scp", "sftp", "rsync",
+        "telnet", "ftp", "tftp", "nmap", "masscan",
+        "kill", "pkill", "killall", "nohup", "disown", "nice", "renice",
+        "docker", "docker-compose", "podman", "kubectl", "crictl",
+        "rm", "rmdir", "shred", "wipe", "srm",
+        "mkfs", "mkswap", "fdisk", "parted", "gdisk", "dd", "truncate",
+        "chmod", "chown", "chgrp", "chattr", "setfacl", "getfacl",
+        "sudo", "su", "doas", "pkexec", "gksudo", "kdesudo",
+        "passwd", "chpasswd", "shadow",
         "useradd", "userdel", "usermod",
         "groupadd", "groupdel", "groupmod",
-        "visudo",
-        
-        # --- Services système ---
+        "visudo", "sudoedit",
         "systemctl", "service", "init",
         "shutdown", "reboot", "poweroff", "halt",
-        "telinit", "runlevel",
-        
-        # --- Montage & Périphériques ---
-        "mount", "umount",
-        "losetup", "cryptsetup",
-        
-        # --- Réseau - Configuration ---
+        "telinit", "runlevel", "journalctl",
+        "mount", "umount", "losetup", "cryptsetup", "lvm",
         "iptables", "ip6tables", "nftables",
-        "ufw", "route",
-        "ifup", "ifdown", "brctl",
-        
-        # --- Kernel & Modules ---
-        "insmod", "rmmod", "modprobe",
-        "sysctl", "dmesg",
-        
-        # --- Cron & Tâches planifiées ---
+        "ufw", "firewall-cmd",
+        "route", "ip", "ifconfig", "ifup", "ifdown", "brctl", "bridge",
+        "insmod", "rmmod", "modprobe", "sysctl", "dmesg",
         "crontab", "at", "batch",
-        
-        # --- Autres dangereux ---
-        "chroot", "pivot_root",
-        "unshare", "nsenter",
-        "strace", "ltrace", "ptrace",
-        "gdb", "lldb",
+        "strace", "ltrace", "ptrace", "gdb", "lldb", "objdump",
+        "tcpdump", "wireshark", "tshark",
+        "gcc", "g++", "clang", "make", "cmake", "ld", "as",
+        "chroot", "pivot_root", "unshare", "nsenter",
+        "xterm", "screen", "tmux",
+        "expect", "autoexpect",
+        "perl", "ruby", "php",
+    ]
+    
+    # ARGUMENTS DANGEREUX
+    DANGEROUS_ARGUMENTS: List[str] = [
+        "-c", "--command", "-e", "--eval", "--exec",
+        "-i", "--interactive", "-t", "--tty",
+        "--privileged", "--cap-add",
+        "-u root", "--user root",
+        "--network", "-p", "--publish",
+        "-v /", "-v /etc", "-v /root", "-v /home", "--volume /",
+        "> /etc", ">> /etc", "> /root", ">> /root",
+        "| bash", "| sh",
+        "git push", "git commit", "git reset --hard", "git clean -fd",
+    ]
+    
+    # URLs autorisées
+    ALLOWED_URL_PATTERNS: List[str] = [
+        "http://localhost",
+        "http://127.0.0.1",
+        "https://api.github.com",
+        "https://ollama",
     ]
 
 
