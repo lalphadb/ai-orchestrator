@@ -1,0 +1,22 @@
+=== TEST C4: systemd_status (action critical) ===
+Date: Sun Jan 11 12:10:06 EST 2026
+
+{
+    "tool": "systemd_status",
+    "params": {
+        "service": "ai-orchestrator"
+    },
+    "result": {
+        "success": false,
+        "data": null,
+        "error": {
+            "code": "E_CMD_FAILED",
+            "message": "Code retour: 127",
+            "recoverable": false
+        },
+        "meta": {
+            "duration_ms": 129,
+            "command": "systemctl status ai-orchestrator"
+        }
+    }
+}

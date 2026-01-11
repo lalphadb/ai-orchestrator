@@ -1,0 +1,4 @@
+=== CONFIG.PY - DEFAULTS ===
+    SECRET_KEY: str = secrets.token_urlsafe(64)
+    VERIFY_REQUIRED: bool = False
+    EXECUTE_MODE: str = "sandbox"

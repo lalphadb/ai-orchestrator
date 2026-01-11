@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Custom focus */
+*:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.5);
+  outline-offset: 2px;
+}
+
+/* Prose code blocks */
+.prose pre {
+  background: rgba(17, 24, 39, 0.8);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.prose code {
+  background: rgba(55, 65, 81, 0.5);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.prose pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/* Animation for streaming dots */
+@keyframes pulse-dot {
+  0%, 80%, 100% { opacity: 0; }
+  40% { opacity: 1; }
+}
+
+.streaming-dots span {
+  animation: pulse-dot 1.4s infinite ease-in-out both;
+}
+
+.streaming-dots span:nth-child(1) { animation-delay: -0.32s; }
+.streaming-dots span:nth-child(2) { animation-delay: -0.16s; }
+
+/* Toggle switch */
+.peer:checked ~ .peer-checked\:translate-x-5 {
+  transform: translateX(1.25rem);
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Prevent text selection on buttons */
+button {
+  user-select: none;
+}
+
+/* Loading animation */
+.loading-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}

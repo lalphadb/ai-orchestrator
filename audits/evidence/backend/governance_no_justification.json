@@ -1,0 +1,25 @@
+=== TEST C2: GOVERNANCE - write_file SANS justification ===
+Date: Sun Jan 11 12:08:42 EST 2026
+Expected: REFUS (action sensitive sans justification)
+
+{
+    "tool": "write_file",
+    "params": {
+        "path": "/tmp/test_audit.txt",
+        "content": "test sans justification"
+    },
+    "result": {
+        "success": false,
+        "data": null,
+        "error": {
+            "code": "E_PATH_FORBIDDEN",
+            "message": "Chemin hors workspace: /tmp/test_audit.txt. Workspace: /home/lalpha/orchestrator-workspace",
+            "recoverable": false
+        },
+        "meta": {
+            "duration_ms": 0
+        }
+    }
+}
+
+=== FIN TEST ===

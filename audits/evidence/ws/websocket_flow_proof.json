@@ -1,0 +1,397 @@
+=== TEST WEBSOCKET COMPLET ===
+Date: Sun Jan 11 12:10:52 EST 2026
+
+[
+  {
+    "type": "conversation_created",
+    "data": {
+      "id": "7b962750-e47c-4508-984e-bb296c5129b2"
+    }
+  },
+  {
+    "type": "phase",
+    "data": {
+      "phase": "execute",
+      "status": "in_progress",
+      "message": "Traitement de la demande..."
+    },
+    "timestamp": "2026-01-11T17:10:52.375476",
+    "run_id": "9174e436"
+  },
+  {
+    "type": "thinking",
+    "data": {
+      "message": "Analyse...",
+      "iteration": 0
+    },
+    "timestamp": "2026-01-11T17:10:52.375578"
+  },
+  {
+    "type": "token",
+    "data": "```tool",
+    "timestamp": "2026-01-11T17:10:53.046324"
+  },
+  {
+    "type": "token",
+    "data": "\n",
+    "timestamp": "2026-01-11T17:10:53.061590"
+  },
+  {
+    "type": "token",
+    "data": "{\"",
+    "timestamp": "2026-01-11T17:10:53.083882"
+  },
+  {
+    "type": "token",
+    "data": "tool",
+    "timestamp": "2026-01-11T17:10:53.102106"
+  },
+  {
+    "type": "token",
+    "data": "\":",
+    "timestamp": "2026-01-11T17:10:53.119405"
+  },
+  {
+    "type": "token",
+    "data": " \"",
+    "timestamp": "2026-01-11T17:10:53.137871"
+  },
+  {
+    "type": "token",
+    "data": "get",
+    "timestamp": "2026-01-11T17:10:53.157000"
+  },
+  {
+    "type": "token",
+    "data": "_datetime",
+    "timestamp": "2026-01-11T17:10:53.175874"
+  },
+  {
+    "type": "token",
+    "data": "\",",
+    "timestamp": "2026-01-11T17:10:53.195298"
+  },
+  {
+    "type": "token",
+    "data": " \"",
+    "timestamp": "2026-01-11T17:10:53.214595"
+  },
+  {
+    "type": "token",
+    "data": "params",
+    "timestamp": "2026-01-11T17:10:53.232923"
+  },
+  {
+    "type": "token",
+    "data": "\":",
+    "timestamp": "2026-01-11T17:10:53.250543"
+  },
+  {
+    "type": "token",
+    "data": " {}",
+    "timestamp": "2026-01-11T17:10:53.268699"
+  },
+  {
+    "type": "token",
+    "data": "}\n",
+    "timestamp": "2026-01-11T17:10:53.286585"
+  },
+  {
+    "type": "token",
+    "data": "```\n",
+    "timestamp": "2026-01-11T17:10:53.304358"
+  },
+  {
+    "type": "token",
+    "data": "```",
+    "timestamp": "2026-01-11T17:10:53.322492"
+  },
+  {
+    "type": "token",
+    "data": "response",
+    "timestamp": "2026-01-11T17:10:53.340874"
+  },
+  {
+    "type": "token",
+    "data": "\n",
+    "timestamp": "2026-01-11T17:10:53.358531"
+  },
+  {
+    "type": "token",
+    "data": "Il",
+    "timestamp": "2026-01-11T17:10:53.376435"
+  },
+  {
+    "type": "token",
+    "data": " est",
+    "timestamp": "2026-01-11T17:10:53.654877"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:53.744844"
+  },
+  {
+    "type": "token",
+    "data": "12",
+    "timestamp": "2026-01-11T17:10:53.763818"
+  },
+  {
+    "type": "token",
+    "data": ":",
+    "timestamp": "2026-01-11T17:10:53.780990"
+  },
+  {
+    "type": "token",
+    "data": "10",
+    "timestamp": "2026-01-11T17:10:53.799806"
+  },
+  {
+    "type": "token",
+    "data": ":",
+    "timestamp": "2026-01-11T17:10:53.817984"
+  },
+  {
+    "type": "token",
+    "data": "52",
+    "timestamp": "2026-01-11T17:10:53.837635"
+  },
+  {
+    "type": "token",
+    "data": " le",
+    "timestamp": "2026-01-11T17:10:53.855204"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:53.873547"
+  },
+  {
+    "type": "token",
+    "data": "11",
+    "timestamp": "2026-01-11T17:10:53.891770"
+  },
+  {
+    "type": "token",
+    "data": " jan",
+    "timestamp": "2026-01-11T17:10:53.911036"
+  },
+  {
+    "type": "token",
+    "data": "vier",
+    "timestamp": "2026-01-11T17:10:53.928770"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:53.947430"
+  },
+  {
+    "type": "token",
+    "data": "202",
+    "timestamp": "2026-01-11T17:10:53.966181"
+  },
+  {
+    "type": "token",
+    "data": "6",
+    "timestamp": "2026-01-11T17:10:53.984450"
+  },
+  {
+    "type": "token",
+    "data": ".",
+    "timestamp": "2026-01-11T17:10:54.002752"
+  },
+  {
+    "type": "token",
+    "data": "",
+    "timestamp": "2026-01-11T17:10:54.021399"
+  },
+  {
+    "type": "token",
+    "data": "",
+    "timestamp": "2026-01-11T17:10:54.095474"
+  },
+  {
+    "type": "tool",
+    "data": {
+      "tool": "get_datetime",
+      "params": {},
+      "iteration": 1
+    },
+    "timestamp": "2026-01-11T17:10:54.095698"
+  },
+  {
+    "type": "token",
+    "data": "```response",
+    "timestamp": "2026-01-11T17:10:54.639566"
+  },
+  {
+    "type": "token",
+    "data": "\n",
+    "timestamp": "2026-01-11T17:10:54.655552"
+  },
+  {
+    "type": "token",
+    "data": "Il",
+    "timestamp": "2026-01-11T17:10:54.673447"
+  },
+  {
+    "type": "token",
+    "data": " est",
+    "timestamp": "2026-01-11T17:10:54.692626"
+  },
+  {
+    "type": "token",
+    "data": " act",
+    "timestamp": "2026-01-11T17:10:54.711182"
+  },
+  {
+    "type": "token",
+    "data": "uel",
+    "timestamp": "2026-01-11T17:10:54.728840"
+  },
+  {
+    "type": "token",
+    "data": "lement",
+    "timestamp": "2026-01-11T17:10:54.746915"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:54.767349"
+  },
+  {
+    "type": "token",
+    "data": "12",
+    "timestamp": "2026-01-11T17:10:54.784370"
+  },
+  {
+    "type": "token",
+    "data": "h",
+    "timestamp": "2026-01-11T17:10:54.802221"
+  },
+  {
+    "type": "token",
+    "data": "10",
+    "timestamp": "2026-01-11T17:10:54.820204"
+  },
+  {
+    "type": "token",
+    "data": " et",
+    "timestamp": "2026-01-11T17:10:54.839236"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:54.857589"
+  },
+  {
+    "type": "token",
+    "data": "54",
+    "timestamp": "2026-01-11T17:10:54.875678"
+  },
+  {
+    "type": "token",
+    "data": " second",
+    "timestamp": "2026-01-11T17:10:54.895200"
+  },
+  {
+    "type": "token",
+    "data": "es",
+    "timestamp": "2026-01-11T17:10:54.913504"
+  },
+  {
+    "type": "token",
+    "data": ",",
+    "timestamp": "2026-01-11T17:10:54.930950"
+  },
+  {
+    "type": "token",
+    "data": " le",
+    "timestamp": "2026-01-11T17:10:54.949666"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:55.478753"
+  },
+  {
+    "type": "token",
+    "data": "11",
+    "timestamp": "2026-01-11T17:10:55.515360"
+  },
+  {
+    "type": "token",
+    "data": " jan",
+    "timestamp": "2026-01-11T17:10:55.533895"
+  },
+  {
+    "type": "token",
+    "data": "vier",
+    "timestamp": "2026-01-11T17:10:55.553391"
+  },
+  {
+    "type": "token",
+    "data": " ",
+    "timestamp": "2026-01-11T17:10:55.573223"
+  },
+  {
+    "type": "token",
+    "data": "202",
+    "timestamp": "2026-01-11T17:10:55.594161"
+  },
+  {
+    "type": "token",
+    "data": "6",
+    "timestamp": "2026-01-11T17:10:55.613532"
+  },
+  {
+    "type": "token",
+    "data": ".\n",
+    "timestamp": "2026-01-11T17:10:55.634286"
+  },
+  {
+    "type": "token",
+    "data": "```",
+    "timestamp": "2026-01-11T17:10:55.653769"
+  },
+  {
+    "type": "token",
+    "data": "",
+    "timestamp": "2026-01-11T17:10:55.674392"
+  },
+  {
+    "type": "token",
+    "data": "",
+    "timestamp": "2026-01-11T17:10:55.749186"
+  },
+  {
+    "type": "complete",
+    "data": {
+      "response": "Il est actuellement 12h10 et 54 secondes, le 11 janvier 2026.",
+      "tools_used": [
+        {
+          "tool": "get_datetime",
+          "input": {},
+          "output": {
+            "success": true,
+            "data": {
+              "datetime": "2026-01-11T12:10:54.095744",
+              "date": "2026-01-11",
+              "time": "12:10:54",
+              "timestamp": 1768151454
+            },
+            "error": null,
+            "meta": {
+              "duration_ms": 0
+            }
+          },
+          "duration_ms": 0
+        }
+      ],
+      "iterations": 2,
+      "duration_ms": 3373
+    },
+    "timestamp": "2026-01-11T17:10:55.749441"
+  }
+]

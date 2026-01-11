@@ -1,0 +1,103 @@
+=== HEALTH CHECK - Sun Jan 11 12:07:48 EST 2026 ===
+{"status":"healthy","version":"7.0"}
+=== TOOLS LIST ===
+{
+    "tools": [
+        {
+            "id": "execute_command",
+            "name": "execute_command",
+            "description": "Ex\u00e9cute une commande shell (sandbox Docker par d\u00e9faut, allowlist obligatoire)",
+            "category": "system",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {
+                "command": "string",
+                "timeout": "int (optional, default=30)"
+            }
+        },
+        {
+            "id": "get_system_info",
+            "name": "get_system_info",
+            "description": "Obtient les informations syst\u00e8me",
+            "category": "system",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {}
+        },
+        {
+            "id": "get_datetime",
+            "name": "get_datetime",
+            "description": "Obtient la date et l'heure actuelles",
+            "category": "utility",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {}
+        },
+        {
+            "id": "read_file",
+            "name": "read_file",
+            "description": "Lit le contenu d'un fichier",
+            "category": "filesystem",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {
+                "path": "string"
+            }
+        },
+        {
+            "id": "write_file",
+            "name": "write_file",
+            "description": "\u00c9crit dans un fichier (WORKSPACE_DIR uniquement, gouvernance obligatoire)",
+            "category": "filesystem",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {
+                "path": "string",
+                "content": "string",
+                "append": "bool (optional)",
+                "justification": "string (optional)"
+            }
+        },
+        {
+            "id": "list_directory",
+            "name": "list_directory",
+            "description": "Liste le contenu d'un r\u00e9pertoire",
+            "category": "filesystem",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {
+                "path": "string (optional)"
+            }
+        },
+        {
+            "id": "search_files",
+            "name": "search_files",
+            "description": "Recherche des fichiers par pattern",
+            "category": "filesystem",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {
+                "pattern": "string",
+                "path": "string (optional)"
+            }
+        },
+        {
+            "id": "search_directory",
+            "name": "search_directory",
+            "description": "Recherche s\u00e9curis\u00e9e de r\u00e9pertoires (allowlist, profondeur limit\u00e9e)",
+            "category": "filesystem",
+            "enabled": true,
+            "usage_count": 0,
+            "parameters": {
+                "name": "string",
+                "base": "string (optional)",
+                "max_depth": "int (optional, max=3)"
+            }
+        },
+        {
+            "id": "calculate",
+            "name": "calculate",
+            "description": "\u00c9value une expression math\u00e9matique",
+            "category": "utility",
+            "enabled": true,
+            "usage_count": 0,

@@ -1,0 +1,26 @@
+=== TEST C1: SANDBOX execute_command ===
+Date: Sun Jan 11 12:08:18 EST 2026
+Endpoint: POST /api/v1/tools/execute_command/execute
+
+{
+    "tool": "execute_command",
+    "params": {
+        "command": "uname -a"
+    },
+    "result": {
+        "success": true,
+        "data": {
+            "stdout": "Linux 0be5788ec3b7 6.17.0-8-generic #8-Ubuntu SMP PREEMPT_DYNAMIC Fri Nov 14 21:44:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux\n",
+            "stderr": "",
+            "returncode": 0
+        },
+        "error": null,
+        "meta": {
+            "duration_ms": 162,
+            "command": "uname -a",
+            "sandbox": true
+        }
+    }
+}
+
+=== FIN TEST ===

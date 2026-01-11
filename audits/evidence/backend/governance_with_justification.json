@@ -1,0 +1,26 @@
+=== TEST C3: GOVERNANCE - write_file AVEC justification ===
+Date: Sun Jan 11 12:09:08 EST 2026
+Expected: SUCCES avec action_id
+
+{
+    "tool": "write_file",
+    "params": {
+        "path": "/home/lalpha/orchestrator-workspace/test_audit_justified.txt",
+        "content": "test avec justification pour audit E2E",
+        "justification": "Test audit E2E - verification gouvernance v7.0"
+    },
+    "result": {
+        "success": true,
+        "data": {
+            "path": "/home/lalpha/orchestrator-workspace/test_audit_justified.txt",
+            "size": 38,
+            "mode": "write"
+        },
+        "error": null,
+        "meta": {
+            "duration_ms": 0
+        }
+    }
+}
+
+=== FIN TEST ===

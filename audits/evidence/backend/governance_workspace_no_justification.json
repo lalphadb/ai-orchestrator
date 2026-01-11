@@ -1,0 +1,25 @@
+=== TEST C2b: GOVERNANCE - write_file dans workspace SANS justification ===
+Date: Sun Jan 11 12:08:50 EST 2026
+Expected: REFUS (action sensitive sans justification)
+
+{
+    "tool": "write_file",
+    "params": {
+        "path": "/home/lalpha/orchestrator-workspace/test_audit.txt",
+        "content": "test sans justification"
+    },
+    "result": {
+        "success": false,
+        "data": null,
+        "error": {
+            "code": "E_GOVERNANCE_DENIED",
+            "message": "Action sensitive requiert une justification",
+            "recoverable": false
+        },
+        "meta": {
+            "duration_ms": 0
+        }
+    }
+}
+
+=== FIN TEST ===
