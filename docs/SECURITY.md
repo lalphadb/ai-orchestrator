@@ -1,6 +1,74 @@
 # Sécurité
 
-Guide des bonnes pratiques de sécurité pour AI Orchestrator v6.
+Guide des bonnes pratiques de sécurité pour AI Orchestrator v7.
+
+**Changements v7:**
+- Sandbox par défaut (Docker)
+- SecureExecutor avec argv explicite (jamais `shell=True`)
+- Outils système spécialisés avec capabilities
+- Audit complet et traçabilité
+
+---
+
+## Posture sécurité v7.0 (fail-closed)
+
+**Principe fondamental:** En cas de doute ou d'erreur, le système refuse l'action plutôt que de tenter un fallback potentiellement dangereux.
+
+### Variables runtime critiques
+
+| Variable | Valeur prod | Description |
+|----------|-------------|-------------|
+| `EXECUTE_MODE` | sandbox | Exécution isolée dans conteneur Docker |
+| `ALLOW_DIRECT_FALLBACK` | false | **Jamais** de fallback vers exécution directe |
+| `VERIFY_REQUIRED` | true | Phase VERIFY obligatoire avant `complete` |
+| `SANDBOX_NETWORK` | none | Réseau désactivé dans le sandbox |
+| `SANDBOX_READONLY` | true | Workspace en lecture seule pour viewer |
+
+### Comportement fail-closed
+
+```python
+# Pseudo-code du comportement v7.0
+def execute_command(cmd, role):
+    if EXECUTE_MODE == "sandbox":
+        result = run_in_docker(cmd)
+        if result.failed and ALLOW_DIRECT_FALLBACK:
+            # v7.0: INTERDIT en prod
+            raise SecurityError("Direct fallback disabled")
+        return result
+    else:
+        # Mode direct - uniquement dev local
+        return run_direct(cmd)
+```
+
+### Vérification de conformité
+
+```bash
+# Script de vérification posture v7.0
+#!/bin/bash
+set -e
+
+# Vérifier variables runtime
+grep -q "EXECUTE_MODE=sandbox" .env || exit 1
+grep -q "ALLOW_DIRECT_FALLBACK=false" .env || exit 1
+grep -q "VERIFY_REQUIRED=true" .env || exit 1
+
+# Vérifier Docker disponible
+docker info > /dev/null 2>&1 || exit 1
+
+# Vérifier sandbox fonctionnel
+docker run --rm --network=none alpine echo "OK" || exit 1
+
+echo "✅ Posture v7.0 conforme"
+```
+
+### Exceptions autorisées
+
+| Contexte | EXECUTE_MODE | ALLOW_DIRECT_FALLBACK |
+|----------|--------------|----------------------|
+| Production | sandbox | false |
+| Staging | sandbox | false |
+| Développement local | direct | N/A |
+| Tests CI | sandbox | false |
 
 ---
 
@@ -172,43 +240,96 @@ class ChatRequest(BaseModel):
 
 ## Sécurité des outils
 
-### execute_command
+### Exécution sécurisée (SecureExecutor v7)
 
-L'outil le plus risqué - mesures de protection:
+**Principes non négociables:**
+
+1. **Jamais `shell=True`** - parsing argv explicite via `shlex`
+2. **Blocage d'injection** - refuse `;`, `&&`, `||`, `|`, backticks, `$()`
+3. **Sandbox par défaut** - exécution dans conteneur Docker isolé
+4. **Audit complet** - trace timestamp, rôle, command, résultat
 
 ```python
-BLOCKED_COMMANDS = [
-    "rm -rf /",
-    "mkfs",
-    "dd if=",
-    ":(){:|:&};:",  # Fork bomb
-    "chmod 777",
-    "wget", "curl",  # Téléchargements arbitraires
-]
+from app.services.react_engine.secure_executor import secure_executor, ExecutionRole
 
-async def execute_command(command: str, timeout: int = 30):
-    # Vérifier les commandes bloquées
-    for blocked in BLOCKED_COMMANDS:
-        if blocked in command:
-            return {"error": "Commande non autorisée"}
+# Exécution sécurisée
+result = await secure_executor.execute(
+    command="ls -lah /workspace",
+    role=ExecutionRole.VIEWER,
+    timeout=30
+)
 
-    # Timeout obligatoire
-    process = await asyncio.wait_for(
-        asyncio.create_subprocess_shell(command, ...),
-        timeout=timeout
-    )
+if result.success:
+    print(result.stdout)
+else:
+    print(f"Erreur: {result.error_code} - {result.error_message}")
 ```
 
-### Sandbox recommandé
+### Sandbox automatique
 
-Pour une sécurité maximale, exécuter les commandes dans un conteneur Docker isolé:
+Mode par défaut (`EXECUTE_MODE=sandbox`):
 
 ```bash
 docker run --rm --network=none \
-  --memory=512m --cpus=0.5 \
-  --read-only \
+  --cpus=0.5 --memory=512m \
+  -v /workspace:/workspace:ro \
   ubuntu:24.04 \
-  /bin/bash -c "commande"
+  ls -lah /workspace
+```
+
+**Protections:**
+- Réseau désactivé (`--network=none`)
+- Limites CPU/Mem (0.5 CPU, 512Mi)
+- Workspace en lecture seule pour `viewer`
+- Pas de montages système (`/etc`, `/root`, etc.)
+- Timeout obligatoire
+
+### Outils spécialisés (capabilities)
+
+Plutôt que des commandes brutes, utilisez les outils dédiés:
+
+```python
+# Systemd
+await systemd_status("nginx")           # viewer
+await systemd_logs("nginx", lines=50)   # viewer
+await systemd_restart("nginx")          # admin + justification
+
+# Docker
+await docker_list_containers()          # operator
+await docker_logs("traefik", tail=100)  # operator
+await docker_restart("traefik")         # admin + justification
+
+# Réseau & Disque
+await network_listeners()               # viewer
+await disk_usage()                      # viewer
+
+# Système
+await apt_update()                      # admin + justification
+await apt_install("package")            # admin + justification
+```
+
+### Caractères interdits
+
+```python
+FORBIDDEN_CHARS = [
+    ';', '&&', '||', '|',      # Chaînage
+    '`', '$(',                 # Substitution
+    '>', '>>', '<', '<<',      # Redirections
+    '\n', '\r', '\x00'         # Contrôle
+]
+```
+
+### Audit et traçabilité
+
+```python
+# Récupérer l'historique d'audit
+from app.services.react_engine.tools import BUILTIN_TOOLS
+
+result = await BUILTIN_TOOLS.execute("get_audit_log", last_n=20)
+
+for entry in result["data"]["entries"]:
+    print(f"{entry['timestamp']}: {entry['role']} - {' '.join(entry['command'])}")
+    print(f"  Allowed: {entry['allowed']}, Reason: {entry['reason']}")
 ```
 
 ---
@@ -269,6 +390,71 @@ http:
 
 ---
 
+## Gouvernance & Rôles
+
+### Classification des actions
+
+| Catégorie | Description | Vérification | Rollback |
+|-----------|-------------|--------------|----------|
+| `READ` | Lecture seule | Non | Non |
+| `SAFE` | Actions sûres | Non | Non |
+| `MODERATE` | Actions modérées | Recommandé | Optionnel |
+| `SENSITIVE` | Actions sensibles | Obligatoire | Obligatoire |
+| `CRITICAL` | Actions critiques | Approbation manuelle | Obligatoire |
+
+### Rôles et capabilities
+
+```python
+from app.services.react_engine.secure_executor import ExecutionRole
+
+# VIEWER - Lecture seule
+role = ExecutionRole.VIEWER
+commands = ["ls", "cat", "grep", "git status", "docker ps", "df"]
+
+# OPERATOR - Actions sûres
+role = ExecutionRole.OPERATOR
+commands = ["systemctl restart", "docker restart", "git pull"]
+
+# ADMIN - Actions sensibles (justification requise)
+role = ExecutionRole.ADMIN
+commands = ["apt update", "write_file", "chmod", "docker build"]
+```
+
+### Justification obligatoire
+
+```python
+from app.services.react_engine.governance import governance_manager
+
+# Préparer une action sensible
+approved, context, msg = await governance_manager.prepare_action(
+    "write_file",
+    {"path": "/etc/config.yaml", "content": "..."},
+    justification="Mise à jour configuration pour déploiement v7"
+)
+
+if approved:
+    # Exécuter l'action
+    result = await tool_function(**params)
+    
+    # Enregistrer le résultat
+    await governance_manager.record_result(
+        context.action_id,
+        success=result["success"],
+        result=result
+    )
+else:
+    print(f"Action refusée: {msg}")
+```
+
+### Rollback
+
+```python
+# Rollback automatique si échec
+success, message = await governance_manager.rollback(action_id)
+```
+
+---
+
 ## Checklist de sécurité
 
 ### Avant déploiement
@@ -279,14 +465,19 @@ http:
 - [ ] HTTPS forcé
 - [ ] Rate limiting activé
 - [ ] Logs activés
+- [ ] **EXECUTE_MODE=sandbox**
+- [ ] **Docker disponible pour sandbox**
+- [ ] **Tests de sécurité passés**
 
 ### Maintenance régulière
 
 - [ ] Mise à jour des dépendances
 - [ ] Rotation des secrets
-- [ ] Revue des logs
+- [ ] Revue des logs d'audit
 - [ ] Tests de pénétration
 - [ ] Backups vérifiés
+- [ ] **Audit des actions sensibles**
+- [ ] **Vérification des rollbacks disponibles**
 
 ---
 

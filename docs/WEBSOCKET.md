@@ -6,7 +6,7 @@ Documentation complète du système de streaming WebSocket temps réel.
 
 ## Vue d'ensemble
 
-AI Orchestrator v6 utilise WebSocket pour le streaming des réponses token par token, offrant une expérience similaire à ChatGPT.
+AI Orchestrator v7.0 utilise WebSocket pour le streaming des réponses token par token, offrant une expérience similaire à ChatGPT.
 
 ```
 ┌─────────────┐                    ┌─────────────┐
@@ -66,6 +66,50 @@ Tous les messages suivent ce format:
   "timestamp": "2026-01-08T14:30:00.000Z",
   "run_id": "abc12345"
 }
+```
+
+---
+
+## run_id - Traçabilité v7.0
+
+**Obligatoire depuis v7.0:** Chaque événement WebSocket contient un champ `run_id` pour traçabilité complète.
+
+```json
+{
+  "type": "...",
+  "data": {...},
+  "timestamp": "2026-01-08T14:30:00.000Z",
+  "run_id": "abc12345"  // ← Toujours présent
+}
+```
+
+**Format:** 8 caractères alphanumériques (UUIDv4 tronqué)
+
+**Utilisation:**
+- Corréler tous les événements d'un même workflow
+- Rechercher dans les logs: `grep "abc12345" audit.log`
+- API: `GET /api/v1/runs/abc12345`
+
+---
+
+## Événements minimum (v7.0)
+
+Pour une implémentation conforme, le client **doit** gérer ces événements:
+
+| Type | Obligatoire | Description |
+|------|-------------|-------------|
+| `phase` | ✅ | Changement de phase workflow |
+| `tool` | ✅ | Exécution d'outil (avec run_id) |
+| `verification_item` | ✅ | Résultat check QA |
+| `complete` | ✅ | Fin du workflow avec verdict |
+| `error` | ✅ | Erreur fatale |
+| `token` | ❌ | Streaming (optionnel) |
+| `thinking` | ❌ | Debug (optionnel) |
+
+**Séquence typique v7.0:**
+```
+phase(spec) → phase(plan) → phase(execute) → tool(...) → 
+phase(verify) → verification_item(...) → complete
 ```
 
 ---

@@ -1,6 +1,6 @@
 # Configuration
 
-Guide complet des variables de configuration d'AI Orchestrator v6.
+Guide complet des variables de configuration d'AI Orchestrator v7.0.
 
 ---
 
@@ -13,7 +13,7 @@ Le fichier `.env` se trouve dans `backend/.env` et contient toutes les variables
 | Variable | Type | Défaut | Description |
 |----------|------|--------|-------------|
 | `APP_NAME` | string | AI Orchestrator | Nom de l'application |
-| `VERSION` | string | 6.0.0 | Version de l'application |
+| `VERSION` | string | 7.0.0 | Version de l'application |
 | `DEBUG` | bool | false | Mode debug (logs détaillés) |
 | `LOG_LEVEL` | string | INFO | Niveau de log (DEBUG, INFO, WARNING, ERROR) |
 
@@ -25,6 +25,9 @@ Le fichier `.env` se trouve dans `backend/.env` et contient toutes les variables
 | `ALGORITHM` | string | HS256 | Algorithme de signature JWT |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | int | 1440 | Durée de validité du token (24h) |
 | `CORS_ORIGINS` | string | * | Origines autorisées (séparées par virgule) |
+| `EXECUTE_MODE` | string | sandbox | Mode exécution (sandbox/direct) |
+| `ALLOW_DIRECT_FALLBACK` | bool | false | Autoriser fallback direct si sandbox échoue |
+| `VERIFY_REQUIRED` | bool | true | Vérification QA obligatoire |
 
 **Générer une clé secrète:**
 ```bash
@@ -70,12 +73,12 @@ DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
 
 ```env
 # =================================
-# AI Orchestrator v6 - Configuration
+# AI Orchestrator v7.0 - Configuration
 # =================================
 
 # Application
 APP_NAME=AI Orchestrator
-VERSION=6.0.0
+VERSION=7.0.0
 DEBUG=false
 LOG_LEVEL=INFO
 
@@ -100,6 +103,35 @@ TOOL_TIMEOUT=30
 
 ---
 
+## Production defaults (v7.0)
+
+**Posture fail-closed** - En production, les valeurs par défaut v7.0 garantissent:
+
+| Variable | Valeur prod | Effet |
+|----------|-------------|-------|
+| `EXECUTE_MODE` | sandbox | Toute commande s'exécute dans un conteneur Docker isolé |
+| `ALLOW_DIRECT_FALLBACK` | false | Si sandbox indisponible, échec au lieu de fallback direct |
+| `VERIFY_REQUIRED` | true | Aucun workflow ne se termine sans passer la phase VERIFY |
+| `DEBUG` | false | Pas de logs sensibles exposés |
+
+**Exemple .env production v7.0:**
+```env
+# Sécurité fail-closed v7.0
+EXECUTE_MODE=sandbox
+ALLOW_DIRECT_FALLBACK=false
+VERIFY_REQUIRED=true
+DEBUG=false
+LOG_LEVEL=WARNING
+```
+
+**Vérification E2E obligatoire:**
+Avant tout déploiement prod, valider que le rollback fonctionne:
+```bash
+./scripts/test-rollback.sh  # Doit retourner exit 0
+```
+
+---
+
 ## Configuration par environnement
 
 ### Développement
@@ -118,6 +150,9 @@ DEBUG=false
 LOG_LEVEL=WARNING
 CORS_ORIGINS=https://ai.4lb.ca
 ACCESS_TOKEN_EXPIRE_MINUTES=1440
+EXECUTE_MODE=sandbox
+ALLOW_DIRECT_FALLBACK=false
+VERIFY_REQUIRED=true
 ```
 
 ---

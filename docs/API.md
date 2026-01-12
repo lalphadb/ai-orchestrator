@@ -1,6 +1,6 @@
 # API Reference
 
-Documentation complète de l'API REST et WebSocket d'AI Orchestrator v6.
+Documentation complète de l'API REST et WebSocket d'AI Orchestrator v7.0.
 
 **Base URL:** `https://ai.4lb.ca/api/v1`
 
@@ -376,7 +376,7 @@ Retourne les statistiques du système.
   },
   "uptime_hours": 120,
   "python_version": "3.13.0",
-  "app_version": "6.0.0"
+  "app_version": "7.0.0"
 }
 ```
 
@@ -622,6 +622,59 @@ asyncio.run(chat())
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1704729600
+```
+
+---
+
+## Observabilité (v7.0)
+
+### run_id - Identifiant de workflow
+
+Chaque exécution workflow génère un `run_id` unique (UUIDv4 court) présent dans:
+- Tous les événements WebSocket
+- Les réponses API `/chat`
+- Les logs backend
+
+**Format:** `abc12345` (8 caractères alphanumériques)
+
+**Utilisation:**
+```bash
+# Rechercher les logs d'un workflow
+grep "run_id=abc12345" /var/log/ai-orchestrator/audit.log
+
+# API: récupérer détails d'un run
+GET /api/v1/runs/{run_id}
+```
+
+### Endpoints observabilité
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /system/health` | Health check (status, ollama, database) |
+| `GET /system/stats` | Métriques système (CPU, RAM, disk) |
+| `GET /runs/{run_id}` | Détails d'un workflow exécuté |
+| `GET /audit/recent` | 50 dernières entrées audit |
+
+### Métriques Prometheus
+
+Exposées sur `/metrics` (si activé):
+```
+ai_orchestrator_requests_total{endpoint="/chat",status="200"}
+ai_orchestrator_workflow_duration_seconds{phase="execute"}
+ai_orchestrator_tool_executions_total{tool="execute_command",sandbox="true"}
+ai_orchestrator_sandbox_failures_total
+```
+
+### Capabilities recommandées
+
+Pour debug avancé, activer ces capabilities dans le frontend:
+```javascript
+const capabilities = {
+  showRunId: true,       // Afficher run_id dans l'UI
+  showPhases: true,      // Timeline des phases workflow
+  showToolDetails: true, // Détails des outils exécutés
+  exportRun: true        // Export JSON du run complet
+};
 ```
 
 ---

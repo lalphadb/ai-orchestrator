@@ -1,8 +1,34 @@
-# AI Orchestrator - Conventions Workflow v6.2
+# AI Orchestrator - Conventions Workflow v7.0
 
 ## Vue d'ensemble
 
 Ce document decrit les conventions utilisees pour le pipeline Workflow et les evenements WebSocket.
+
+---
+
+## Règle d'or audit v7.0
+
+**Posture fail-closed** - Toute action doit être prouvable et réversible.
+
+| Principe | Implémentation v7.0 |
+|----------|---------------------|
+| Sandbox par défaut | `EXECUTE_MODE=sandbox` - Jamais d'exécution directe en prod |
+| Fallback interdit | `ALLOW_DIRECT_FALLBACK=false` - Échec si sandbox indisponible |
+| Vérification obligatoire | `VERIFY_REQUIRED=true` - Workflow incomplet sans phase VERIFY |
+| Rollback prouvable | Toute action SENSITIVE/CRITICAL doit avoir un plan de rollback E2E |
+
+**Quand VERIFY s'exécute:**
+- `VERIFY_REQUIRED=true` → VERIFY s'exécute **toujours** après EXECUTE
+- Si VERIFY échoue → passage en phase REPAIR (max 3 cycles)
+- Si 3 cycles REPAIR échouent → workflow `failed` avec evidence
+
+**Audit trail:**
+Chaque exécution génère un `run_id` unique traçable dans:
+- Événements WebSocket (champ `run_id`)
+- Logs backend (`/var/log/ai-orchestrator/audit.log`)
+- Base de données (`workflow_runs` table)
+
+---
 
 ## Pipeline Workflow
 
@@ -253,7 +279,7 @@ Nouvel outil pour recuperation automatique sur E_DIR_NOT_FOUND.
 | `MAX_ITERATIONS` | Iterations max ReAct | 10 |
 | `MAX_REPAIR_CYCLES` | Cycles repair max | 3 |
 | `VERIFY_REQUIRED` | Verification obligatoire | true |
-| `EXECUTE_MODE` | Mode execution (sandbox/direct) | direct |
+| `EXECUTE_MODE` | Mode execution (sandbox/direct) | sandbox |
 | `WORKSPACE_DIR` | Repertoire de travail | /home/lalpha/orchestrator-workspace |
 
 ## Actions Frontend
