@@ -210,14 +210,55 @@ function detectModels(content) {
     // Find the first { and last } to ignore potential conversational text around JSON
     const start = cleaned.indexOf('{')
     const end = cleaned.lastIndexOf('}')
-    
+
     if (start !== -1 && end !== -1) {
       const jsonStr = cleaned.substring(start, end + 1)
       const parsed = JSON.parse(jsonStr)
-      
-      // Check for standard list_llm_models response structure
+
+      // Format 0: Tool output format { tool: "list_llm_models", output: { data: { models: [...] } } }
+      if (parsed.output?.data?.models && Array.isArray(parsed.output.data.models)) {
+        for (const m of parsed.output.data.models) {
+          if (m.name && !seen.has(m.name)) {
+            seen.add(m.name)
+            models.push({
+              name: m.name,
+              size: m.size || 0,
+              modified_at: m.modified_at || null,
+              available: m.available !== false
+            })
+          }
+        }
+      }
+      // Format 0b: Tool output format with direct models { output: { models: [...] } }
+      else if (parsed.output?.models && Array.isArray(parsed.output.models)) {
+        for (const m of parsed.output.models) {
+          if (m.name && !seen.has(m.name)) {
+            seen.add(m.name)
+            models.push({
+              name: m.name,
+              size: m.size || 0,
+              modified_at: m.modified_at || null,
+              available: m.available !== false
+            })
+          }
+        }
+      }
+      // Format 0c: Nested data.models { data: { models: [...] } }
+      else if (parsed.data?.models && Array.isArray(parsed.data.models)) {
+        for (const m of parsed.data.models) {
+          if (m.name && !seen.has(m.name)) {
+            seen.add(m.name)
+            models.push({
+              name: m.name,
+              size: m.size || 0,
+              modified_at: m.modified_at || null,
+              available: m.available !== false
+            })
+          }
+        }
+      }
       // Format 1: { models: [...] }
-      if (parsed.models && Array.isArray(parsed.models)) {
+      else if (parsed.models && Array.isArray(parsed.models)) {
         for (const m of parsed.models) {
           if (m.name && !seen.has(m.name)) {
             seen.add(m.name)
@@ -229,7 +270,7 @@ function detectModels(content) {
             })
           }
         }
-      } 
+      }
       // Format 2: Direct array of models [...]
       else if (Array.isArray(parsed)) {
         for (const m of parsed) {
@@ -244,7 +285,7 @@ function detectModels(content) {
           }
         }
       }
-      
+
       if (models.length > 0) {
         result.isModelsList = true
         result.models = models
