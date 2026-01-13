@@ -10,7 +10,7 @@
               <span class="text-white font-bold text-lg">AI</span>
             </div>
             <span class="font-semibold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-              Orchestrator v6.5
+              Orchestrator v7.0
             </span>
           </router-link>
         </div>

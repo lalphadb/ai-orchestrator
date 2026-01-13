@@ -5,7 +5,7 @@
       <div class="w-16 h-16 mb-4 rounded-2xl bg-gradient-to-br from-primary-500 to-purple-600 flex items-center justify-center">
         <span class="text-white text-2xl font-bold">AI</span>
       </div>
-      <h2 class="text-xl font-semibold text-white mb-2">AI Orchestrator v6.5</h2>
+      <h2 class="text-xl font-semibold text-white mb-2">AI Orchestrator v7.0</h2>
       <p class="text-gray-400 max-w-md mb-6">
         Un orchestrateur autonome avec boucle ReAct,<br/>capable d'exécuter des outils et d'interagir avec votre système.
       </p>

@@ -158,7 +158,7 @@
       
       <div class="space-y-2 text-sm">
         <p class="text-gray-300">
-          <span class="text-gray-500">Version:</span> AI Orchestrator v6.5
+          <span class="text-gray-500">Version:</span> AI Orchestrator v7.0
         </p>
         <p class="text-gray-300">
           <span class="text-gray-500">Backend:</span> FastAPI + ReAct Engine
