@@ -22,9 +22,12 @@ export const useChatStore = defineStore('chat', () => {
   const currentRun = ref(null)
   const runHistory = ref([])
 
+  // Watchdog timer for stuck detection
+  const watchdogTimer = ref(null)
+
   // Phases du workflow
   const WORKFLOW_PHASES = ['spec', 'plan', 'execute', 'verify', 'repair', 'complete']
-  
+
   // WebSocket state
   const wsState = ref('disconnected')
   
@@ -163,6 +166,7 @@ export const useChatStore = defineStore('chat', () => {
         }
       }
       isLoading.value = false
+      stopWatchdog()
     })
 
     wsClient.on('error', (error, runId) => {
@@ -173,6 +177,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       addErrorMessage(typeof error === 'string' ? error : error.message || 'Erreur inconnue')
       isLoading.value = false
+      stopWatchdog()
     })
 
     wsClient.on('conversationCreated', (data) => {
@@ -260,7 +265,51 @@ export const useChatStore = defineStore('chat', () => {
       })
     }
   }
-  
+
+  // Watchdog functions
+  function startWatchdog() {
+    if (watchdogTimer.value) return // Already running
+
+    const WATCHDOG_INTERVAL = 10000 // Check every 10s
+    const STUCK_TIMEOUT = 20000 // Consider stuck after 20s
+
+    watchdogTimer.value = setInterval(() => {
+      if (!currentRun.value) {
+        stopWatchdog()
+        return
+      }
+
+      // Check if stuck (starting phase + no updates for >20s)
+      if (currentRun.value.workflowPhase === 'starting') {
+        const elapsed = Date.now() - currentRun.value.startTime
+        if (elapsed > STUCK_TIMEOUT) {
+          console.error(`[Watchdog] Run stuck for ${elapsed}ms → FAILED`)
+          currentRun.value.workflowPhase = 'failed'
+          currentRun.value.currentPhase = 'error'
+          currentRun.value.error = `⏱️ Timeout: Aucun événement reçu après ${Math.round(elapsed/1000)}s`
+          addErrorMessage(`Timeout: Le backend ne répond pas (${Math.round(elapsed/1000)}s)`)
+          isLoading.value = false
+          stopWatchdog()
+        }
+      }
+
+      // Stop watchdog if run completed/failed
+      if (['complete', 'failed'].includes(currentRun.value.workflowPhase)) {
+        stopWatchdog()
+      }
+    }, WATCHDOG_INTERVAL)
+
+    console.log('[Watchdog] Started for run', currentRun.value?.id)
+  }
+
+  function stopWatchdog() {
+    if (watchdogTimer.value) {
+      clearInterval(watchdogTimer.value)
+      watchdogTimer.value = null
+      console.log('[Watchdog] Stopped')
+    }
+  }
+
   // API Methods
   async function fetchConversations() {
     conversationsLoading.value = true
@@ -355,9 +404,12 @@ export const useChatStore = defineStore('chat', () => {
       verdict: null,
       repairCycles: 0
     }
-    
+
     isLoading.value = true
-    
+
+    // Start watchdog to detect stuck runs
+    startWatchdog()
+
     // Try WebSocket first
     const sent = wsClient.sendMessage(content, currentConversation.value?.id, currentModel.value)
     
@@ -390,16 +442,32 @@ export const useChatStore = defineStore('chat', () => {
       if (currentRun.value) {
         currentRun.value.complete = data
         currentRun.value.currentPhase = 'complete'
+        currentRun.value.workflowPhase = 'complete'
         currentRun.value.endTime = Date.now()
+        currentRun.value.duration = currentRun.value.endTime - currentRun.value.startTime
+        currentRun.value.verification = data.verification
+        currentRun.value.verdict = data.verdict
+
+        // Populate toolCalls from tools_used
+        if (data.tools_used) {
+          currentRun.value.toolCalls = data.tools_used.map((tool, i) => ({
+            tool: typeof tool === 'string' ? tool : tool.tool,
+            params: tool.params || {},
+            iteration: i,
+            timestamp: Date.now()
+          }))
+        }
       }
     } catch (e) {
       addErrorMessage(e.message)
       if (currentRun.value) {
         currentRun.value.error = e.message
         currentRun.value.currentPhase = 'error'
+        currentRun.value.workflowPhase = 'failed'
       }
     } finally {
       isLoading.value = false
+      stopWatchdog()
     }
   }
   
