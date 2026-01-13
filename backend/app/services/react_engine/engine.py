@@ -322,10 +322,32 @@ MAINTENANT, réponds à l'utilisateur avec ces informations. Utilise ```response
 
         # Max iterations - forcer une réponse
         duration = int((time.time() - start_time) * 1000)
-        last_tool_result = tools_used[-1]["output"] if tools_used else "Aucun résultat"
+        last_tool_result = (
+            tools_used[-1]["output"] if tools_used else {"success": False, "data": "Aucun résultat"}
+        )
+
+        # Formater intelligemment selon le type de résultat
+        if tools_used and tools_used[-1].get("tool") == "list_llm_models":
+            # Cas spécial: liste de modèles
+            models_data = last_tool_result.get("data", {})
+            if isinstance(models_data, dict) and "models" in models_data:
+                total = models_data.get("total", len(models_data["models"]))
+                response_text = f"J'ai trouvé {total} modèles LLM disponibles. Voici les détails:\n\n{json.dumps(models_data, ensure_ascii=False, indent=2)}"
+            else:
+                response_text = f"Modèles LLM:\n{json.dumps(last_tool_result, ensure_ascii=False, indent=2)[:1000]}"
+        elif last_tool_result.get("success"):
+            # Résultat d'outil réussi
+            data = last_tool_result.get("data", last_tool_result)
+            response_text = (
+                f"Résultat obtenu:\n{json.dumps(data, ensure_ascii=False, indent=2)[:1000]}"
+            )
+        else:
+            # Erreur
+            error_msg = last_tool_result.get("error", {}).get("message", "Erreur inconnue")
+            response_text = f"Une erreur s'est produite: {error_msg}"
 
         return {
-            "response": f"Voici les informations trouvées:\n{json.dumps(last_tool_result, ensure_ascii=False, indent=2)[:500]}",
+            "response": response_text,
             "model": model,
             "tools_used": tools_used,
             "iterations": iteration,
