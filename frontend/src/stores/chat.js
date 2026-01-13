@@ -217,25 +217,32 @@ export const useChatStore = defineStore('chat', () => {
    */
   function finalizeMessage(data) {
     const lastMsg = messages.value[messages.value.length - 1]
+    console.log('[finalizeMessage] lastMsg:', lastMsg, 'data:', data)
+
     if (lastMsg && lastMsg.role === 'assistant') {
       // Récupérer le contenu final
       const finalContent = data.response || data.content || ''
-      
+      console.log('[finalizeMessage] finalContent:', finalContent)
+
       // TOUJOURS utiliser la réponse finale si elle existe
       // Cela évite d'afficher le JSON brut accumulé pendant le streaming
       if (finalContent && finalContent.trim()) {
         lastMsg.content = finalContent
+        console.log('[finalizeMessage] Set content to:', lastMsg.content)
       } else if (currentRun.value?.tokens) {
         // Fallback: utiliser les tokens streamés si pas de réponse finale
         lastMsg.content = currentRun.value.tokens
+        console.log('[finalizeMessage] Fallback to tokens:', lastMsg.content)
+      } else {
+        console.error('[finalizeMessage] NO CONTENT FOUND! data:', JSON.stringify(data))
       }
-      
+
       lastMsg.streaming = false
       lastMsg.tools_used = data.tools_used || []
       lastMsg.iterations = data.iterations
       lastMsg.duration_ms = data.duration_ms
       lastMsg.model = data.model_used || data.model
-      
+
       // Ajouter les métadonnées de vérification
       if (data.verification) {
         lastMsg.verification = data.verification
@@ -243,9 +250,11 @@ export const useChatStore = defineStore('chat', () => {
       if (data.verdict) {
         lastMsg.verdict = data.verdict
       }
-      
+
       // Timestamp de finalisation
       lastMsg.finalized_at = Date.now()
+    } else {
+      console.error('[finalizeMessage] No assistant message found! messages:', messages.value.length)
     }
   }
   
