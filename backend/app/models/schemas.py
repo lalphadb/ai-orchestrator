@@ -1,15 +1,19 @@
 """
 Pydantic schemas for request/response validation
 """
-from datetime import datetime
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, EmailStr
 
+import json
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # ===== AUTH SCHEMAS =====
 
+
 class UserCreate(BaseModel):
     """Création d'utilisateur"""
+
     username: str = Field(..., min_length=3, max_length=50)
     email: Optional[EmailStr] = None
     password: str = Field(..., min_length=6)
@@ -17,12 +21,14 @@ class UserCreate(BaseModel):
 
 class UserLogin(BaseModel):
     """Login utilisateur"""
+
     username: str
     password: str
 
 
 class UserResponse(BaseModel):
     """Réponse utilisateur"""
+
     id: str
     username: str
     email: Optional[str] = None
@@ -36,6 +42,7 @@ class UserResponse(BaseModel):
 
 class Token(BaseModel):
     """Token JWT"""
+
     access_token: str
     token_type: str = "bearer"
     expires_in: int
@@ -44,14 +51,17 @@ class Token(BaseModel):
 
 # ===== CONVERSATION SCHEMAS =====
 
+
 class ConversationCreate(BaseModel):
     """Création de conversation"""
+
     title: Optional[str] = "Nouvelle conversation"
     model: Optional[str] = None
 
 
 class MessageResponse(BaseModel):
     """Message dans une conversation"""
+
     id: int
     role: str
     content: str
@@ -60,12 +70,27 @@ class MessageResponse(BaseModel):
     thinking: Optional[str] = None
     created_at: datetime
 
+    @field_validator("tools_used", mode="before")
+    @classmethod
+    def parse_tools_used(cls, v):
+        """Deserialize tools_used if it's a JSON string"""
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            try:
+                parsed = json.loads(v)
+                return parsed if parsed else None
+            except (json.JSONDecodeError, ValueError):
+                return None
+        return v
+
     class Config:
         from_attributes = True
 
 
 class ConversationResponse(BaseModel):
     """Réponse conversation"""
+
     id: str
     title: str
     model: Optional[str] = None
@@ -79,14 +104,17 @@ class ConversationResponse(BaseModel):
 
 class MessageCreate(BaseModel):
     """Création de message"""
+
     role: str = Field(..., pattern="^(user|assistant|system)$")
     content: str
 
 
 # ===== CHAT SCHEMAS =====
 
+
 class ChatRequest(BaseModel):
     """Requête de chat"""
+
     message: str = Field(..., min_length=1)
     conversation_id: Optional[str] = None
     model: Optional[str] = None
@@ -96,6 +124,7 @@ class ChatRequest(BaseModel):
 
 class ToolExecution(BaseModel):
     """Exécution d'un outil"""
+
     tool: str
     input: Dict[str, Any]
     output: Any
@@ -104,6 +133,7 @@ class ToolExecution(BaseModel):
 
 class ChatResponse(BaseModel):
     """Réponse de chat"""
+
     response: str
     conversation_id: str
     model_used: str
@@ -115,8 +145,10 @@ class ChatResponse(BaseModel):
 
 # ===== TOOL SCHEMAS =====
 
+
 class ToolInfo(BaseModel):
     """Information sur un outil"""
+
     id: str
     name: str
     description: Optional[str] = None
@@ -131,6 +163,7 @@ class ToolInfo(BaseModel):
 
 class ToolListResponse(BaseModel):
     """Liste des outils"""
+
     tools: List[ToolInfo]
     total: int
     categories: List[str]
@@ -138,8 +171,10 @@ class ToolListResponse(BaseModel):
 
 # ===== SYSTEM SCHEMAS =====
 
+
 class SystemStats(BaseModel):
     """Statistiques système"""
+
     version: str
     uptime_seconds: float
     total_conversations: int
@@ -153,6 +188,7 @@ class SystemStats(BaseModel):
 
 class ModelInfo(BaseModel):
     """Information sur un modèle"""
+
     name: str
     size: Optional[int] = None
     modified_at: Optional[datetime] = None
@@ -161,14 +197,17 @@ class ModelInfo(BaseModel):
 
 class ModelsResponse(BaseModel):
     """Liste des modèles"""
+
     models: List[ModelInfo]
     default_model: str
 
 
 # ===== WEBSOCKET SCHEMAS =====
 
+
 class WSMessage(BaseModel):
     """Message WebSocket"""
+
     type: str  # thinking, tool, chunk, complete, error
     data: Any
     timestamp: datetime = Field(default_factory=datetime.utcnow)
