@@ -1,66 +1,27 @@
-# Déploiement - AI Orchestrator v6.5
+# Déploiement — v7.1
 
-## Architecture de déploiement
+## Pré-requis
 
-Le backend tourne en service systemd local (pas Docker).
-Le frontend reste en Docker via nginx.
+- Ubuntu (systemd)
+- Docker (obligatoire si `EXECUTE_MODE=sandbox`)
+- Node + Python
 
-## Prérequis
+## Service backend (systemd)
 
-- Ubuntu 22.04+ ou Debian 12+
-- Python 3.11+
-- Node.js 18+ et npm
-- Ollama installé
-- Docker (frontend uniquement)
+- Vérifier :
+  - `systemctl status ai-orchestrator`
+  - `journalctl -u ai-orchestrator -n 200 --no-pager`
 
-## Installation Backend (systemd)
+⚠️ Après mise à jour code backend, **redémarrer** le service :
+- `sudo systemctl restart ai-orchestrator`
 
-### 1. Dépendances
-```bash
-cd /home/lalpha/projets/ai-tools/ai-orchestrator/backend
-pip install -r requirements.txt --break-system-packages
-```
+## Frontend
 
-### 2. Service systemd
-```bash
-sudo tee /etc/systemd/system/ai-orchestrator.service << 'SERVICE'
-[Unit]
-Description=AI Orchestrator Backend v6.5
-After=network.target ollama.service
+- Build : `npm run build`
+- Déployer le dossier `dist/` via votre méthode (nginx, rsync, etc.)
+- Vider cache/CDN si nécessaire (sinon version UI incohérente)
 
-[Service]
-Type=simple
-User=lalpha
-WorkingDirectory=/home/lalpha/projets/ai-tools/ai-orchestrator/backend
-ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8001
-Restart=on-failure
+## Post-deploy checks
 
-[Install]
-WantedBy=multi-user.target
-SERVICE
-
-sudo systemctl daemon-reload
-sudo systemctl enable ai-orchestrator
-sudo systemctl start ai-orchestrator
-```
-
-## Commandes de gestion
-
-### Backend
-```bash
-sudo systemctl status ai-orchestrator
-journalctl -u ai-orchestrator -f
-sudo systemctl restart ai-orchestrator
-```
-
-### Frontend
-```bash
-docker restart ai-orchestrator-frontend
-docker logs -f ai-orchestrator-frontend
-```
-
-## Vérification
-```bash
-curl http://localhost:8001/api/v1/system/health
-curl http://localhost:8002/
-```
+- `GET /api/v1/system/health`
+- Test WS minimal : un run doit finir par `complete` en < 15s sur une requête simple.

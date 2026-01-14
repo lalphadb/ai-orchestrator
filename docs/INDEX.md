@@ -1,91 +1,30 @@
-# 📚 Documentation AI Orchestrator v6.2
+# Documentation — AI Orchestrator v7.1
 
-Bienvenue dans la documentation complète d'AI Orchestrator v6.
+Dernière mise à jour: 2026-01-13
 
----
+Cette documentation décrit **le comportement réel attendu** de l’orchestrator (backend + frontend), et fournit les **procédures d’audit** pour vérifier que *doc ↔ config ↔ runtime ↔ UI* sont alignés.
 
-## Guide de démarrage rapide
+## Démarrage rapide
 
-1. **[Installation](INSTALLATION.md)** - Installer AI Orchestrator
-2. **[Configuration](CONFIGURATION.md)** - Configurer l'application
-3. **[Déploiement](DEPLOYMENT.md)** - Mettre en production
+1. Installation : `INSTALLATION.md`
+2. Configuration : `CONFIGURATION.md`
+3. Lancer en dev : `DEVELOPMENT.md`
+4. Déployer : `DEPLOYMENT.md`
+5. Utiliser le workflow : `WORKFLOW.md`
+6. Interfaces temps réel : `WEBSOCKET.md` et `FRONTEND.md`
+7. Sécurité : `SECURITY.md`
+8. Débogage : `TROUBLESHOOTING.md`
+9. Auditer : `AUDIT/AUDIT_METHOD.md` + `AUDIT/AUDIT_PLAN_TEMPLATE.md`
 
----
+## Principes non négociables
 
-## Documentation technique
+- **Présent ≠ fonctionnel** : une promesse n’est “OK” que si elle est prouvée en runtime.
+- **Fail‑closed** : si la sandbox est requise mais indisponible, on **échoue fort** (pas de fallback silencieux).
+- **Événement terminal obligatoire** : chaque run doit finir par `complete` ou `error` (jamais “RUNNING infini”).
+- **Traçabilité** : chaque action outillée doit être auditée (outil, input, output, durée).
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](ARCHITECTURE.md) | Architecture technique complète |
-| [API Reference](API.md) | Documentation de l'API REST et WebSocket |
-| [Outils](TOOLS.md) | Les 17 outils intégrés (dont 7 QA) |
-| [WebSocket](WEBSOCKET.md) | Streaming temps réel |
-| [Workflow](WORKFLOW_CONVENTIONS.md) | Pipeline et conventions v6.2 |
-| [Sécurité](SECURITY.md) | Bonnes pratiques de sécurité |
+## Structure recommandée du dossier docs
 
----
-
-## Guides pratiques
-
-| Guide | Description |
-|-------|-------------|
-| [Développement](DEVELOPMENT.md) | Contribuer au projet |
-| [Troubleshooting](TROUBLESHOOTING.md) | Résoudre les problèmes courants |
-| [FAQ](FAQ.md) | Questions fréquentes |
-
----
-
-## Références
-
-| Document | Description |
-|----------|-------------|
-| [Changelog](CHANGELOG.md) | Historique des versions |
-| [Roadmap](ROADMAP.md) | Fonctionnalités prévues |
-| [License](../LICENSE) | Licence MIT |
-
----
-
-## Structure de la documentation
-
-```
-docs/
-├── INDEX.md                  # ← Vous êtes ici
-├── INSTALLATION.md           # Guide d'installation
-├── CONFIGURATION.md          # Variables de configuration
-├── DEPLOYMENT.md             # Mise en production
-├── ARCHITECTURE.md           # Architecture technique
-├── ARCHITECTURE-v6.1.md      # Architecture v6.1
-├── API.md                    # Référence API
-├── TOOLS.md                  # Documentation des 17 outils
-├── WEBSOCKET.md              # Streaming WebSocket
-├── WORKFLOW_CONVENTIONS.md   # Pipeline workflow v6.2
-├── SECURITY.md               # Sécurité
-├── DEVELOPMENT.md            # Guide développeur
-├── TROUBLESHOOTING.md        # Dépannage
-├── FAQ.md                    # Questions fréquentes
-├── CHANGELOG.md              # Historique des versions
-├── ROADMAP.md                # Roadmap
-├── api/                      # Exemples API
-├── guides/                   # Guides additionnels
-└── examples/                 # Exemples de code
-```
-
----
-
-## Liens utiles
-
-- **Application**: https://ai.4lb.ca
-- **API Docs**: https://ai.4lb.ca/docs
-- **Repository**: GitHub (privé)
-- **Contact**: lalpha@4lb.ca
-
----
-
-## Versions
-
-| Version | Date | Status |
-|---------|------|--------|
-| v6.2.0 | 2026-01-08 | ✅ Stable |
-| v6.1.0 | 2026-01-08 | ✅ Stable |
-| v6.0.0 | 2026-01-07 | ✅ Stable |
-| v5.x | 2025-12 | ❌ Deprecated |
+- Guides : `ARCHITECTURE.md`, `WORKFLOW.md`, `SECURITY.md`, `API.md`, `WEBSOCKET.md`, `FRONTEND.md`
+- Ops : `DEPLOYMENT.md`, `OBSERVABILITY.md`, `TROUBLESHOOTING.md`
+- Audit : `AUDIT/` (méthode + templates + checklists)
