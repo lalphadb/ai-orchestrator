@@ -293,25 +293,29 @@
       <!-- Actions -->
       <div class="flex gap-2">
         <button
-          @click="chat.rerunVerification()"
-          class="flex-1 px-3 py-2 bg-gradient-to-r from-blue-600/30 to-blue-500/20 hover:from-blue-600/50 hover:to-blue-500/30 text-blue-300 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 border border-blue-500/30"
+          @click="handleReVerify"
+          :disabled="isReVerifying || !run.complete"
+          class="flex-1 px-3 py-2 bg-gradient-to-r from-blue-600/30 to-blue-500/20 hover:from-blue-600/50 hover:to-blue-500/30 text-blue-300 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 border border-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           title="Relancer la verification QA"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg v-if="!isReVerifying" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
           </svg>
-          Re-verify
+          <div v-else class="w-3.5 h-3.5 border-2 border-blue-300 border-t-transparent rounded-full animate-spin"></div>
+          {{ isReVerifying ? 'Vérification...' : 'Re-verify' }}
         </button>
         <button
           v-if="run.verdict?.status === 'FAIL'"
-          @click="chat.forceRepair()"
-          class="flex-1 px-3 py-2 bg-gradient-to-r from-orange-600/30 to-yellow-500/20 hover:from-orange-600/50 hover:to-yellow-500/30 text-orange-300 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 border border-orange-500/30"
+          @click="handleRepair"
+          :disabled="isRepairing || !run.complete"
+          class="flex-1 px-3 py-2 bg-gradient-to-r from-orange-600/30 to-yellow-500/20 hover:from-orange-600/50 hover:to-yellow-500/30 text-orange-300 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 border border-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           title="Forcer un cycle de reparation"
         >
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg v-if="!isRepairing" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v3a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v3a1 1 0 01-1 1h-3a1 1 0 01-1-1v-1a2 2 0 10-4 0v1a1 1 0 01-1 1H7a1 1 0 01-1-1v-3a1 1 0 00-1-1H4a2 2 0 110-4h1a1 1 0 001-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"/>
           </svg>
-          Repair
+          <div v-else class="w-3.5 h-3.5 border-2 border-orange-300 border-t-transparent rounded-full animate-spin"></div>
+          {{ isRepairing ? 'Réparation...' : 'Repair' }}
         </button>
       </div>
       <div class="flex gap-2">
@@ -356,18 +360,34 @@
         </button>
       </div>
     </div>
+
+    <!-- Toast Notification -->
+    <Toast
+      :show="toast.show"
+      :type="toast.type"
+      :message="toast.message"
+      :description="toast.description"
+      @close="toast.show = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, h } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import Toast from '@/components/common/Toast.vue'
 
 const chat = useChatStore()
 const run = computed(() => chat.currentRun)
 const WORKFLOW_PHASES = chat.WORKFLOW_PHASES
 
 const activeTab = ref('tools')
+const toast = ref({
+  show: false,
+  type: 'success',
+  message: '',
+  description: ''
+})
 
 // Tab icons as render functions
 const ToolsIcon = () => h('svg', { fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
@@ -392,6 +412,15 @@ const tabs = computed(() => [
   { id: 'verification', label: 'QA', badge: run.value?.verificationItems?.length || 0, icon: VerificationIcon },
   { id: 'raw', label: 'Raw', icon: RawIcon }
 ])
+
+// Loading states for action buttons
+const isReVerifying = computed(() => {
+  return run.value?.workflowPhase === 'verify' && !run.value?.complete
+})
+
+const isRepairing = computed(() => {
+  return run.value?.workflowPhase === 'repair' && !run.value?.complete
+})
 
 const verdictClass = computed(() => {
   if (!run.value) return 'bg-gray-700 text-gray-400'
@@ -505,10 +534,35 @@ function formatRaw() {
   }, null, 2)
 }
 
+function showToast(type, message, description = '') {
+  toast.value = { show: true, type, message, description }
+}
+
+async function handleReVerify() {
+  try {
+    await chat.rerunVerification()
+    showToast('success', 'Vérification relancée', 'Les checks QA sont en cours d\'exécution')
+  } catch (error) {
+    showToast('error', 'Échec de la vérification', error.message)
+  }
+}
+
+async function handleRepair() {
+  try {
+    await chat.forceRepair()
+    showToast('success', 'Réparation lancée', 'Le cycle de correction a démarré')
+  } catch (error) {
+    showToast('error', 'Échec de la réparation', error.message)
+  }
+}
+
 function copyTrace() {
   const report = chat.exportRunReport()
   if (report) {
     navigator.clipboard.writeText(report)
+    showToast('success', 'Trace copiée', 'Le rapport a été copié dans le presse-papiers')
+  } else {
+    showToast('warning', 'Aucune trace', 'Aucun rapport disponible pour le moment')
   }
 }
 
@@ -522,6 +576,9 @@ function downloadReport() {
     a.download = `run-report-${run.value?.id || 'unknown'}.json`
     a.click()
     URL.revokeObjectURL(url)
+    showToast('success', 'Rapport téléchargé', 'Le rapport JSON a été enregistré')
+  } else {
+    showToast('warning', 'Aucun rapport', 'Aucun rapport disponible pour le moment')
   }
 }
 </script>

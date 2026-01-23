@@ -10,9 +10,9 @@ Contrat uniforme ToolResult:
 """
 
 import asyncio
-import re
 import logging
 import os
+import re
 import shlex
 import time
 from datetime import datetime
@@ -20,22 +20,29 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypedDict
 
 from app.core.config import settings
-from app.services.react_engine.secure_executor import secure_executor, ExecutionRole
-from app.services.react_engine.governance import governance_manager, ActionCategory
-from app.services.react_engine.memory import durable_memory, MemoryCategory
-from app.services.react_engine.runbooks import runbook_registry, RunbookCategory
+from app.services.react_engine.governance import (ActionCategory,
+                                                  governance_manager)
+from app.services.react_engine.memory import MemoryCategory, durable_memory
+from app.services.react_engine.runbooks import (RunbookCategory,
+                                                runbook_registry)
+from app.services.react_engine.secure_executor import (ExecutionRole,
+                                                       secure_executor)
 
 # ===== SECURITY PATTERNS (AUDIT 2026-01-09) =====
 DANGEROUS_PATTERNS = [
-    r'\$\(',           # $(command)
-    r'`[^`]+`',        # `command`
-    r'\$\{[^}]+\}',    # ${var}
-    r'>\s*/etc', r'>>\s*/etc',
-    r'>\s*/root', r'>\s*/home', r'>\s*/var',
-    r'\|\s*(bash|sh|zsh|ksh)',
-    r';\s*(bash|sh|rm|chmod|chown)',
-    r'&&\s*(bash|sh|rm|chmod|chown)',
-    r'base64\s+-d', r'base64\s+--decode',
+    r"\$\(",  # $(command)
+    r"`[^`]+`",  # `command`
+    r"\$\{[^}]+\}",  # ${var}
+    r">\s*/etc",
+    r">>\s*/etc",
+    r">\s*/root",
+    r">\s*/home",
+    r">\s*/var",
+    r"\|\s*(bash|sh|zsh|ksh)",
+    r";\s*(bash|sh|rm|chmod|chown)",
+    r"&&\s*(bash|sh|rm|chmod|chown)",
+    r"base64\s+-d",
+    r"base64\s+--decode",
 ]
 
 
@@ -49,14 +56,26 @@ def contains_dangerous_patterns(command: str) -> tuple[bool, str]:
 
 def contains_dangerous_arguments(command: str) -> tuple[bool, str]:
     """Vérifie si la commande contient des arguments dangereux"""
-    dangerous_args = getattr(settings, 'DANGEROUS_ARGUMENTS', [
-        "-c", "--command", "-e", "--eval", "--exec",
-        "| bash", "| sh", "git push", "git commit",
-    ])
+    dangerous_args = getattr(
+        settings,
+        "DANGEROUS_ARGUMENTS",
+        [
+            "-c",
+            "--command",
+            "-e",
+            "--eval",
+            "--exec",
+            "| bash",
+            "| sh",
+            "git push",
+            "git commit",
+        ],
+    )
     for arg in dangerous_args:
         if arg.lower() in command.lower():
             return True, f"Argument dangereux: {arg}"
     return False, ""
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +101,43 @@ FATAL_ERRORS = {
 def is_recoverable_error(error_code: str) -> bool:
     """Vérifie si une erreur est récupérable"""
     return error_code in RECOVERABLE_ERRORS
+
+
+# ===== PATH VALIDATION (SECURITY) =====
+
+
+def validate_and_resolve_path(file_path: str, workspace_dir: str = None) -> tuple[bool, str]:
+    """
+    Valide et résout un chemin fichier de manière sécurisée.
+
+    Protection contre path traversal (../, symlinks malveillants, etc.)
+
+    Args:
+        file_path: Chemin à valider (relatif ou absolu)
+        workspace_dir: Répertoire workspace (défaut: settings.WORKSPACE_DIR)
+
+    Returns:
+        (is_valid, canonical_path_ou_message_erreur)
+    """
+    try:
+        workspace = Path(workspace_dir or settings.WORKSPACE_DIR).resolve()
+
+        # Résoudre le path (relatif au workspace si pas absolu)
+        if not os.path.isabs(file_path):
+            abs_path = (workspace / file_path).resolve()
+        else:
+            abs_path = Path(file_path).resolve()
+
+        # Vérifier que le path résolu est dans le workspace (protection traversal)
+        try:
+            abs_path.relative_to(workspace)
+        except ValueError:
+            return False, f"Path outside workspace: {file_path} (resolved: {abs_path})"
+
+        return True, str(abs_path)
+
+    except Exception as e:
+        return False, f"Invalid path: {str(e)}"
 
 
 # ===== TOOL RESULT CONTRACT =====
@@ -294,10 +350,7 @@ async def execute_command(command: str, timeout: int = 30, role: str = "operator
 
     # Utiliser le SecureExecutor (JAMAIS shell=True)
     result = await secure_executor.execute(
-        command=command,
-        role=exec_role,
-        timeout=timeout,
-        cwd=settings.WORKSPACE_DIR
+        command=command, role=exec_role, timeout=timeout, cwd=settings.WORKSPACE_DIR
     )
 
     # Convertir en ToolResult pour compatibilité
@@ -322,34 +375,39 @@ async def execute_command(command: str, timeout: int = 30, role: str = "operator
 def get_audit_log(last_n: int = 20) -> ToolResult:
     """
     Récupère les dernières entrées d'audit des commandes exécutées.
-    
+
     Args:
         last_n: Nombre d'entrées à récupérer (défaut 20)
     """
     try:
         log = secure_executor.get_audit_log(last_n=last_n)
-        return ok({
-            "entries": log,
-            "count": len(log),
-        })
+        return ok(
+            {
+                "entries": log,
+                "count": len(log),
+            }
+        )
     except Exception as e:
         return fail("E_AUDIT_ERROR", str(e))
 
 
 def read_file(path: str) -> ToolResult:
-    """Lit le contenu d'un fichier"""
+    """Lit le contenu d'un fichier (sécurisé contre path traversal)"""
     try:
-        # Résoudre le chemin (relatif au workspace si pas absolu)
-        if not os.path.isabs(path):
-            path = os.path.join(settings.WORKSPACE_DIR, path)
+        # Valider et résoudre le chemin de manière sécurisée
+        is_valid, result = validate_and_resolve_path(path, settings.WORKSPACE_DIR)
+        if not is_valid:
+            return fail("E_PATH_FORBIDDEN", result)
 
-        with open(path, "r", encoding="utf-8") as f:
+        canonical_path = result
+
+        with open(canonical_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         return ok(
             {
                 "content": content,
-                "path": path,
+                "path": canonical_path,
                 "size": len(content),
                 "lines": content.count("\n") + 1,
             }
@@ -364,30 +422,30 @@ def read_file(path: str) -> ToolResult:
 
 def write_file(path: str, content: str, append: bool = False) -> ToolResult:
     """
-    Écrit dans un fichier.
+    Écrit dans un fichier (sécurisé contre path traversal).
     SÉCURITÉ: Écriture limitée au WORKSPACE_DIR uniquement.
     """
-    # Résoudre le chemin
-    if not os.path.isabs(path):
-        path = os.path.join(settings.WORKSPACE_DIR, path)
+    # Valider et résoudre le chemin de manière sécurisée
+    is_valid, result = validate_and_resolve_path(path, settings.WORKSPACE_DIR)
+    if not is_valid:
+        return fail("E_PATH_FORBIDDEN", result)
 
-    # Vérifier que le chemin est dans le workspace
-    allowed, reason = is_path_in_workspace(path)
-    if not allowed:
-        return fail("E_PATH_FORBIDDEN", reason)
+    canonical_path = result
 
     if not settings.WORKSPACE_ALLOW_WRITE:
         return fail("E_WRITE_DISABLED", "Écriture désactivée dans la configuration")
 
     try:
         # Créer les répertoires parents si nécessaire
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        os.makedirs(os.path.dirname(canonical_path), exist_ok=True)
 
         mode = "a" if append else "w"
-        with open(path, mode, encoding="utf-8") as f:
+        with open(canonical_path, mode, encoding="utf-8") as f:
             f.write(content)
 
-        return ok({"path": path, "size": len(content), "mode": "append" if append else "write"})
+        return ok(
+            {"path": canonical_path, "size": len(content), "mode": "append" if append else "write"}
+        )
     except PermissionError:
         return fail("E_PERMISSION", f"Permission refusée: {path}")
     except Exception as e:
@@ -395,13 +453,17 @@ def write_file(path: str, content: str, append: bool = False) -> ToolResult:
 
 
 def list_directory(path: str = ".") -> ToolResult:
-    """Liste le contenu d'un répertoire"""
+    """Liste le contenu d'un répertoire (sécurisé contre path traversal)"""
     try:
-        if not os.path.isabs(path):
-            path = os.path.join(settings.WORKSPACE_DIR, path)
+        # Valider et résoudre le chemin de manière sécurisée
+        is_valid, result = validate_and_resolve_path(path, settings.WORKSPACE_DIR)
+        if not is_valid:
+            return fail("E_PATH_FORBIDDEN", result)
+
+        canonical_path = result
 
         entries = []
-        for entry in os.scandir(path):
+        for entry in os.scandir(canonical_path):
             entries.append(
                 {
                     "name": entry.name,
@@ -410,7 +472,7 @@ def list_directory(path: str = ".") -> ToolResult:
                 }
             )
 
-        return ok({"path": path, "entries": entries, "count": len(entries)})
+        return ok({"path": canonical_path, "entries": entries, "count": len(entries)})
     except FileNotFoundError:
         return fail("E_DIR_NOT_FOUND", f"Répertoire non trouvé: {path}")
     except Exception as e:
@@ -990,7 +1052,6 @@ BUILTIN_TOOLS.register(
 )
 
 
-
 # ===== AUDIT TOOL (v7 Security) =====
 BUILTIN_TOOLS.register(
     "get_audit_log",
@@ -1001,22 +1062,24 @@ BUILTIN_TOOLS.register(
 )
 
 
-
 # ===== GOVERNANCE TOOLS (v7) =====
+
 
 def get_action_history(last_n: int = 20) -> ToolResult:
     """
     Récupère l'historique des actions exécutées.
-    
+
     Args:
         last_n: Nombre d'entrées à récupérer (défaut 20)
     """
     try:
         history = governance_manager.get_action_history(last_n=last_n)
-        return ok({
-            "actions": history,
-            "count": len(history),
-        })
+        return ok(
+            {
+                "actions": history,
+                "count": len(history),
+            }
+        )
     except Exception as e:
         return fail("E_GOVERNANCE_ERROR", str(e))
 
@@ -1027,10 +1090,12 @@ def get_pending_verifications() -> ToolResult:
     """
     try:
         pending = governance_manager.get_pending_verifications()
-        return ok({
-            "pending": pending,
-            "count": len(pending),
-        })
+        return ok(
+            {
+                "pending": pending,
+                "count": len(pending),
+            }
+        )
     except Exception as e:
         return fail("E_GOVERNANCE_ERROR", str(e))
 
@@ -1038,17 +1103,19 @@ def get_pending_verifications() -> ToolResult:
 async def rollback_action(action_id: str) -> ToolResult:
     """
     Effectue le rollback d'une action précédente.
-    
+
     Args:
         action_id: ID de l'action à annuler
     """
     try:
         success, message = await governance_manager.rollback(action_id)
         if success:
-            return ok({
-                "rolled_back": action_id,
-                "message": message,
-            })
+            return ok(
+                {
+                    "rolled_back": action_id,
+                    "message": message,
+                }
+            )
         else:
             return fail("E_ROLLBACK_FAILED", message)
     except Exception as e:
@@ -1081,19 +1148,15 @@ BUILTIN_TOOLS.register(
 )
 
 
-
 # ===== MEMORY TOOLS (v7) =====
 
+
 def memory_remember(
-    category: str,
-    key: str,
-    value: str,
-    description: str,
-    tags: str = ""
+    category: str, key: str, value: str, description: str, tags: str = ""
 ) -> ToolResult:
     """
     Mémorise une information pour usage futur.
-    
+
     Args:
         category: service|convention|incident|decision|context
         key: Clé unique
@@ -1112,36 +1175,24 @@ def memory_remember(
         cat = cat_map.get(category.lower())
         if not cat:
             return fail("E_INVALID_CATEGORY", f"Catégorie invalide: {category}")
-        
+
         tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-        
+
         entry = durable_memory.remember(
-            category=cat,
-            key=key,
-            value=value,
-            description=description,
-            tags=tag_list
+            category=cat, key=key, value=value, description=description, tags=tag_list
         )
-        
-        return ok({
-            "id": entry.id,
-            "key": entry.key,
-            "category": entry.category.value,
-            "saved": True
-        })
+
+        return ok(
+            {"id": entry.id, "key": entry.key, "category": entry.category.value, "saved": True}
+        )
     except Exception as e:
         return fail("E_MEMORY_ERROR", str(e))
 
 
-def memory_recall(
-    category: str = "",
-    key: str = "",
-    tags: str = "",
-    query: str = ""
-) -> ToolResult:
+def memory_recall(category: str = "", key: str = "", tags: str = "", query: str = "") -> ToolResult:
     """
     Rappelle des informations de la mémoire.
-    
+
     Args:
         category: Filtrer par catégorie (optionnel)
         key: Filtrer par clé exacte (optionnel)
@@ -1163,30 +1214,28 @@ def memory_recall(
                     "context": MemoryCategory.CONTEXT,
                 }
                 cat = cat_map.get(category.lower())
-            
+
             tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
-            
-            results = durable_memory.recall(
-                category=cat,
-                key=key if key else None,
-                tags=tag_list
-            )
-        
-        return ok({
-            "entries": [
-                {
-                    "id": e.id,
-                    "category": e.category.value,
-                    "key": e.key,
-                    "value": e.value,
-                    "description": e.description,
-                    "tags": e.tags,
-                    "confidence": e.confidence
-                }
-                for e in results[:20]  # Limiter à 20 résultats
-            ],
-            "count": len(results)
-        })
+
+            results = durable_memory.recall(category=cat, key=key if key else None, tags=tag_list)
+
+        return ok(
+            {
+                "entries": [
+                    {
+                        "id": e.id,
+                        "category": e.category.value,
+                        "key": e.key,
+                        "value": e.value,
+                        "description": e.description,
+                        "tags": e.tags,
+                        "confidence": e.confidence,
+                    }
+                    for e in results[:20]  # Limiter à 20 résultats
+                ],
+                "count": len(results),
+            }
+        )
     except Exception as e:
         return fail("E_MEMORY_ERROR", str(e))
 
@@ -1204,10 +1253,11 @@ def memory_context() -> ToolResult:
 
 # ===== RUNBOOK TOOLS (v7) =====
 
+
 def list_runbooks(category: str = "") -> ToolResult:
     """
     Liste les runbooks disponibles.
-    
+
     Args:
         category: Filtrer par catégorie (deployment|diagnostic|recovery|maintenance|security)
     """
@@ -1223,7 +1273,7 @@ def list_runbooks(category: str = "") -> ToolResult:
             cat = cat_map.get(category.lower())
             if not cat:
                 return fail("E_INVALID_CATEGORY", f"Catégorie invalide: {category}")
-            
+
             runbooks = runbook_registry.list_by_category(cat)
             result = [
                 {
@@ -1231,17 +1281,14 @@ def list_runbooks(category: str = "") -> ToolResult:
                     "name": rb.name,
                     "description": rb.description[:100],
                     "steps_count": len(rb.steps),
-                    "requires_admin": rb.requires_admin
+                    "requires_admin": rb.requires_admin,
                 }
                 for rb in runbooks
             ]
         else:
             result = runbook_registry.list_all()
-        
-        return ok({
-            "runbooks": result,
-            "count": len(result)
-        })
+
+        return ok({"runbooks": result, "count": len(result)})
     except Exception as e:
         return fail("E_RUNBOOK_ERROR", str(e))
 
@@ -1249,7 +1296,7 @@ def list_runbooks(category: str = "") -> ToolResult:
 def get_runbook(runbook_id: str) -> ToolResult:
     """
     Récupère les détails d'un runbook.
-    
+
     Args:
         runbook_id: ID du runbook
     """
@@ -1257,26 +1304,28 @@ def get_runbook(runbook_id: str) -> ToolResult:
         rb = runbook_registry.get(runbook_id)
         if not rb:
             return fail("E_NOT_FOUND", f"Runbook non trouvé: {runbook_id}")
-        
-        return ok({
-            "id": rb.id,
-            "name": rb.name,
-            "description": rb.description,
-            "category": rb.category.value,
-            "requires_admin": rb.requires_admin,
-            "estimated_duration": rb.estimated_duration,
-            "tags": rb.tags,
-            "steps": [
-                {
-                    "name": s.name,
-                    "description": s.description,
-                    "command": s.command,
-                    "tool": s.tool,
-                    "on_failure": s.on_failure
-                }
-                for s in rb.steps
-            ]
-        })
+
+        return ok(
+            {
+                "id": rb.id,
+                "name": rb.name,
+                "description": rb.description,
+                "category": rb.category.value,
+                "requires_admin": rb.requires_admin,
+                "estimated_duration": rb.estimated_duration,
+                "tags": rb.tags,
+                "steps": [
+                    {
+                        "name": s.name,
+                        "description": s.description,
+                        "command": s.command,
+                        "tool": s.tool,
+                        "on_failure": s.on_failure,
+                    }
+                    for s in rb.steps
+                ],
+            }
+        )
     except Exception as e:
         return fail("E_RUNBOOK_ERROR", str(e))
 
@@ -1284,24 +1333,26 @@ def get_runbook(runbook_id: str) -> ToolResult:
 def search_runbooks(query: str) -> ToolResult:
     """
     Recherche dans les runbooks.
-    
+
     Args:
         query: Texte à rechercher
     """
     try:
         results = runbook_registry.search(query)
-        return ok({
-            "runbooks": [
-                {
-                    "id": rb.id,
-                    "name": rb.name,
-                    "description": rb.description[:100],
-                    "category": rb.category.value
-                }
-                for rb in results
-            ],
-            "count": len(results)
-        })
+        return ok(
+            {
+                "runbooks": [
+                    {
+                        "id": rb.id,
+                        "name": rb.name,
+                        "description": rb.description[:100],
+                        "category": rb.category.value,
+                    }
+                    for rb in results
+                ],
+                "count": len(results),
+            }
+        )
     except Exception as e:
         return fail("E_RUNBOOK_ERROR", str(e))
 
@@ -1317,7 +1368,7 @@ BUILTIN_TOOLS.register(
         "key": "string: Clé unique",
         "value": "string: Valeur à mémoriser",
         "description": "string: Description humaine",
-        "tags": "string (optional): Tags séparés par virgule"
+        "tags": "string (optional): Tags séparés par virgule",
     },
 )
 
@@ -1330,7 +1381,7 @@ BUILTIN_TOOLS.register(
         "category": "string (optional): Filtrer par catégorie",
         "key": "string (optional): Filtrer par clé",
         "tags": "string (optional): Tags à rechercher",
-        "query": "string (optional): Recherche textuelle"
+        "query": "string (optional): Recherche textuelle",
     },
 )
 

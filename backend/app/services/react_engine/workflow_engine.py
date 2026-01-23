@@ -1,6 +1,6 @@
 """
 Workflow Engine - Pipeline Spec→Plan→Execute→Verify→Repair
-AI Orchestrator v6.1
+AI Orchestrator v7.0
 
 Orchestre le flux complet:
 1. SPEC: Générer spécification + critères d'acceptation
@@ -278,19 +278,41 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
             )
 
     def _is_simple_request(self, message: str) -> bool:
-        """Détecte si c'est une question simple ne nécessitant pas spec/plan"""
-        message_lower = message.lower()
+        """Détecte si c'est une question simple ne nécessitant pas spec/plan.
 
-        # Questions conversationnelles
-        simple_patterns = [
+        Règles:
+        - Conversational queries sont simples.
+        - Les questions (avec "?" ou mots interrogatifs) sont simples SAUF
+          si elles contiennent des verbes d'action potentiellement dangereux
+          (install, update, create, delete, etc.).
+        - Les messages très courts ne sont simples que s'ils sont des questions.
+        """
+
+        message_lower = message.lower().strip()
+
+        # Heuristique stricte: indicateurs de modification système/fichier
+        unsafe_indicators = [
+            "fichier",
+            "dossier",
+            "répertoire",
+            "repertoire",
+            "config",
+            ".yml",
+            "/tmp",
+            "utilisateur",
+            "user",
+        ]
+        if any(ind in message_lower for ind in unsafe_indicators):
+            return False
+
+        # Conversational / small talk
+        conversational = [
             "bonjour",
             "salut",
             "hello",
             "hi",
             "comment ça va",
             "how are you",
-            "quelle heure",
-            "what time",
             "qui es-tu",
             "who are you",
             "merci",
@@ -298,15 +320,92 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
             "au revoir",
             "bye",
         ]
-
-        if any(pattern in message_lower for pattern in simple_patterns):
+        if any(p in message_lower for p in conversational):
             return True
 
-        # Messages très courts
-        if len(message.split()) <= 5:
+        # Interrogatives / question detection
+        question_words = [
+            # French
+            "qui",
+            "quoi",
+            "où",
+            "ou",
+            "quand",
+            "comment",
+            "pourquoi",
+            "quel",
+            "quelle",
+            "quels",
+            "quelles",
+            "est-ce",
+            # English
+            "who",
+            "what",
+            "where",
+            "when",
+            "how",
+            "why",
+        ]
+        is_question = ("?" in message_lower) or any(w in message_lower for w in question_words)
+
+        # Allowed info verbs (still safe when phrased as a question)
+        info_verbs = [
+            "affiche",
+            "montre",
+            "liste",  # fr
+            "show",
+            "display",
+            "list",  # en
+        ]
+
+        # Dangerous action verbs / intents → must be COMPLEX
+        dangerous_actions = [
+            # fr
+            "installe",
+            "install",
+            "met à jour",
+            "met a jour",
+            "update",
+            "crée",
+            "cree",
+            "create",
+            "supprime",
+            "delete",
+            "modifie",
+            "edit",
+            "écris",
+            "ecris",
+            "write",
+            "configure",
+            "change",
+            "exécute",
+            "execute",
+            "lance",
+            "start",
+            "arrête",
+            "stop",
+            "redémarre",
+            "restart",
+        ]
+
+        dangerous_hit = any(a in message_lower for a in dangerous_actions)
+        if dangerous_hit:
+            # Log classification decision for observability
+            logger.debug(
+                "[simple-detector] Dangerous action detected, forcing workflow mode",
+                extra={
+                    "classification_reason": "dangerous_action",
+                    "message_preview": message_lower[:100],
+                    "is_simple": False,
+                },
+            )
+            return False
+
+        # Short messages are only simple if they're questions
+        if len(message_lower.split()) <= 5 and is_question:
             return True
 
-        # Questions d'information simples
+        # Info questions are simple
         info_patterns = [
             "qu'est-ce que",
             "what is",
@@ -316,7 +415,14 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
             "define",
         ]
 
-        if any(pattern in message_lower for pattern in info_patterns):
+        if is_question and (
+            any(p in message_lower for p in info_patterns)
+            or any(v in message_lower for v in info_verbs)
+        ):
+            return True
+
+        # Generic question without dangerous actions is simple (e.g. "uptime du serveur?")
+        if is_question:
             return True
 
         return False
@@ -670,11 +776,13 @@ IMPORTANT: Après avoir terminé, tu DOIS vérifier avec les outils QA (run_test
         tools_used = []
         if state.execution:
             for t in state.execution.tools_used:
+                # NE PAS inclure les résultats bruts (output) pour éviter d'afficher du JSON
+                # Le frontend n'a besoin que des noms des outils utilisés
                 tools_used.append(
                     {
                         "tool": t.tool,
-                        "input": t.params,
-                        "output": t.result,
+                        # "input": t.params,  # Commenté: pas nécessaire pour l'affichage
+                        # "output": t.result,  # CRITIQUE: Ne JAMAIS envoyer ça au frontend
                         "duration_ms": t.duration_ms,
                     }
                 )

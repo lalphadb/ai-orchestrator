@@ -7,7 +7,7 @@
         class="px-3 py-1.5 bg-gray-800/50 border border-gray-700/50 rounded-lg text-sm text-gray-300 focus:outline-none focus:border-primary-500/50"
       >
         <option v-for="model in chat.availableModels" :key="model" :value="model">
-          {{ model }}
+          {{ formatModelName(model) }}
         </option>
       </select>
       
@@ -72,13 +72,13 @@
         class="w-full px-4 py-3 pr-12 bg-gray-800/50 border border-gray-700/50 rounded-xl text-gray-200 placeholder-gray-500 resize-none focus:outline-none focus:border-primary-500/50 transition-colors disabled:opacity-50"
         :style="{ height: textareaHeight }"
       ></textarea>
-      
+
       <button
         @click="send"
         :disabled="!message.trim() || chat.isLoading"
         class="absolute right-2 bottom-2 p-2 rounded-lg transition-colors disabled:opacity-30"
-        :class="message.trim() && !chat.isLoading 
-          ? 'bg-primary-600 hover:bg-primary-500 text-white' 
+        :class="message.trim() && !chat.isLoading
+          ? 'bg-primary-600 hover:bg-primary-500 text-white'
           : 'bg-gray-700 text-gray-500'"
       >
         <svg v-if="!chat.isLoading" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -87,18 +87,42 @@
         <div v-else class="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
       </button>
     </div>
+
+    <!-- Keyboard hints -->
+    <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+      <span>Entrée ou ⌘+Entrée pour envoyer • Shift+Entrée pour nouvelle ligne</span>
+      <span v-if="chat.currentConversation">
+        #{{ chat.currentConversation.id?.slice(0, 8) }}
+      </span>
+    </div>
+
+    <!-- Toast Notification -->
+    <Toast
+      :show="toast.show"
+      :type="toast.type"
+      :message="toast.message"
+      :description="toast.description"
+      @close="toast.show = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import { useChatStore } from '@/stores/chat'
+import Toast from '@/components/common/Toast.vue'
 
 const chat = useChatStore()
 
 const message = ref('')
 const inputRef = ref(null)
 const showExportMenu = ref(false)
+const toast = ref({
+  show: false,
+  type: 'success',
+  message: '',
+  description: ''
+})
 
 const wsLabel = computed(() => {
   switch (chat.wsState) {
@@ -111,14 +135,24 @@ const wsLabel = computed(() => {
 
 const textareaHeight = computed(() => {
   const lines = message.value.split('\n').length
-  const baseHeight = 48
+  const minHeight = 48
   const lineHeight = 24
   const maxHeight = 200
-  return Math.min(baseHeight + (lines - 1) * lineHeight, maxHeight) + 'px'
+  return Math.min(Math.max(minHeight, lines * lineHeight), maxHeight) + 'px'
 })
 
+function formatModelName(name) {
+  if (!name) return name
+  // Shorten long model names
+  return name.replace(':latest', '').replace('-instruct', '').replace('-q4_K_M', '')
+}
+
 function handleKeydown(e) {
-  if (e.key === 'Enter' && !e.shiftKey) {
+  // Cmd/Ctrl + Enter or just Enter (without Shift)
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    e.preventDefault()
+    send()
+  } else if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault()
     send()
   }
@@ -133,10 +167,18 @@ function send() {
   })
 }
 
+function showToast(type, message, description = '') {
+  toast.value = { show: true, type, message, description }
+}
+
 function exportAs(format) {
   const content = chat.exportConversation(format)
-  if (!content) return
-  
+  if (!content) {
+    showToast('warning', 'Aucune conversation', 'Aucune conversation disponible à exporter')
+    showExportMenu.value = false
+    return
+  }
+
   const blob = new Blob([content], { type: format === 'json' ? 'application/json' : 'text/markdown' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -145,6 +187,9 @@ function exportAs(format) {
   a.click()
   URL.revokeObjectURL(url)
   showExportMenu.value = false
+
+  const formatLabel = format.toUpperCase()
+  showToast('success', `Conversation exportée`, `Format: ${formatLabel}`)
 }
 
 // Close export menu on click outside

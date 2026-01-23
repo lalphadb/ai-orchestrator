@@ -180,7 +180,7 @@ async function handlePositive() {
   try {
     await learningStore.sendPositiveFeedback(
       props.messageId,
-      chatStore.currentConversationId,
+      chatStore.currentConversation?.id,
       props.query,
       props.response,
       props.toolsUsed
@@ -198,7 +198,7 @@ async function handleNegative() {
   try {
     await learningStore.sendNegativeFeedback(
       props.messageId,
-      chatStore.currentConversationId,
+      chatStore.currentConversation?.id,
       props.query,
       props.response,
       props.toolsUsed
@@ -213,12 +213,12 @@ async function handleNegative() {
 
 async function submitCorrection() {
   if (!correctionText.value.trim()) return
-  
+
   loading.value = true
   try {
     await learningStore.sendCorrection(
       props.messageId,
-      chatStore.currentConversationId,
+      chatStore.currentConversation?.id,
       props.query,
       props.response,
       correctionText.value,

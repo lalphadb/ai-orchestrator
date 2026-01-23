@@ -45,15 +45,20 @@
           <div class="animate-spin w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full"></div>
           <span class="text-sm">Génération...</span>
         </div>
-        
-        <!-- Special: Models Display (détection ROBUSTE) -->
-        <ModelsDisplay 
-          v-if="detectModels(msg.content).isModelsList"
-          :models="detectModels(msg.content).models"
-        />
-        
-        <!-- Regular Content (rendu amélioré) -->
-        <div 
+
+        <!-- Content: either ModelsDisplay OR regular markdown -->
+        <template v-if="msg.role === 'assistant' && !msg.streaming">
+          <ModelsDisplay
+            v-if="getModelsData(msg.content).isModelsList"
+            :models="getModelsData(msg.content).models"
+          />
+          <div
+            v-else
+            class="prose prose-invert prose-sm max-w-none message-content"
+            v-html="renderContent(msg.content)"
+          ></div>
+        </template>
+        <div
           v-else
           class="prose prose-invert prose-sm max-w-none message-content"
           v-html="renderContent(msg.content)"
@@ -149,6 +154,34 @@ defineEmits(['send'])
 const container = ref(null)
 const scrollAnchor = ref(null)
 
+// Cache pour detectModels (évite les appels multiples)
+const modelsCache = new Map()
+
+/**
+ * Version mémorisée de detectModels pour éviter les appels multiples
+ */
+function getModelsData(content) {
+  if (!content) return { isModelsList: false, models: [] }
+
+  // Créer une clé de cache basée sur le contenu (hash simple)
+  const cacheKey = content.substring(0, 100) + content.length
+
+  if (modelsCache.has(cacheKey)) {
+    return modelsCache.get(cacheKey)
+  }
+
+  const result = detectModels(content)
+  modelsCache.set(cacheKey, result)
+
+  // Nettoyer le cache s'il devient trop grand
+  if (modelsCache.size > 50) {
+    const firstKey = modelsCache.keys().next().value
+    modelsCache.delete(firstKey)
+  }
+
+  return result
+}
+
 // Exemples plus orientés workflow
 const examples = [
   "Crée un script de monitoring CPU",
@@ -192,9 +225,11 @@ function getMessageClass(msg) {
  */
 function detectModels(content) {
   const result = { isModelsList: false, models: [] }
-  
+
   if (!content || typeof content !== 'string') return result
-  
+
+  console.log('[DetectModels] Input content:', content.substring(0, 200))
+
   let cleaned = content.trim()
   const models = []
   const seen = new Set()
@@ -203,17 +238,22 @@ function detectModels(content) {
   const codeBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
   if (codeBlockMatch) {
     cleaned = codeBlockMatch[1].trim()
+    console.log('[DetectModels] Extracted from code block')
   }
-  
+
   // 2. Try parsing full JSON object (most robust method)
   try {
     // Find the first { and last } to ignore potential conversational text around JSON
     const start = cleaned.indexOf('{')
     const end = cleaned.lastIndexOf('}')
 
+    console.log('[DetectModels] JSON bounds:', { start, end, length: cleaned.length })
+
     if (start !== -1 && end !== -1) {
       const jsonStr = cleaned.substring(start, end + 1)
+      console.log('[DetectModels] Extracted JSON:', jsonStr.substring(0, 300))
       const parsed = JSON.parse(jsonStr)
+      console.log('[DetectModels] Parsed successfully:', Object.keys(parsed))
 
       // Format 0: Tool output format { tool: "list_llm_models", output: { data: { models: [...] } } }
       if (parsed.output?.data?.models && Array.isArray(parsed.output.data.models)) {
@@ -287,10 +327,12 @@ function detectModels(content) {
       }
 
       if (models.length > 0) {
+        console.log('[DetectModels] ✅ Found models:', models.length)
         result.isModelsList = true
         result.models = models
         return result
       }
+      console.log('[DetectModels] ⚠️ Parsed JSON but no models found')
     }
   } catch (e) {
     // JSON parse error, continue to fallbacks
@@ -395,7 +437,8 @@ function detectModels(content) {
     result.isModelsList = true
     result.models = models
   }
-  
+
+  console.log('[DetectModels] Final result:', result.isModelsList, 'models:', result.models.length)
   return result
 }
 
@@ -426,35 +469,99 @@ function isMarkdown(content) {
  */
 function renderContent(content) {
   if (!content) return ''
-  
+
   // Si c'est une liste de modèles, ne pas render (sera géré par ModelsDisplay)
-  if (detectModels(content).isModelsList) {
+  if (getModelsData(content).isModelsList) {
+    console.log('[RenderContent] Liste de modèles détectée - rendu vide')
     return ''
   }
   
-  // NOUVEAU: Nettoyer le JSON brut des outils qui s'affiche parfois
+  // NETTOYAGE AMÉLIORÉ du JSON brut
   let cleanedContent = content
-  
-  // Enlever les blocs JSON bruts de type {"tool": "...", "output": {...}}
+
+  // 1. Enlever les gros blocs JSON finaux (>200 caractères)
+  const lastJsonBlockMatch = cleanedContent.match(/^([\s\S]*?)(\n\n+|\n)(\{[\s\S]{200,}\})\s*$/m)
+  if (lastJsonBlockMatch) {
+    cleanedContent = lastJsonBlockMatch[1].trim()
+  }
+
+  // 2. Enlever les blocs JSON multi-lignes complets (objets avec accolades imbriquées)
   cleanedContent = cleanedContent.replace(
-    /\{\s*"tool"\s*:\s*"[^"]*"\s*,\s*"(?:input|output)"\s*:\s*\{[^}]*\}[^}]*\}/g,
+    /\{[\s\S]*?"(?:models|data|output|success|tool|error|meta)"\s*:[\s\S]*?\}(?:\s*[,}\]])?/g,
+    (match) => {
+      // Supprimer si c'est du JSON structuré (>80 chars OU plusieurs lignes)
+      if (match.length > 80 || match.split('\n').length > 3) {
+        console.log('[RenderContent] JSON bloc supprimé:', match.substring(0, 50) + '...')
+        return ''
+      }
+      return match
+    }
+  )
+
+  // 3. Enlever les blocs JSON bruts de type {"tool": "...", "output": {...}}
+  cleanedContent = cleanedContent.replace(
+    /\{\s*"tool"\s*:\s*"[^"]*"[\s\S]*?\}(?:\s*[,}\]])+/g,
     ''
   )
-  
-  // Enlever les lignes JSON brutes isolées qui commencent par { et finissent par }
+
+  // 4. Enlever les lignes JSON individuelles (format {"name": "...", "size": ...})
   cleanedContent = cleanedContent.replace(
-    /^\s*\{\s*"(?:tool|success|data|error|meta|duration)"[^\n]*\}\s*$/gm,
+    /^\s*\{\s*"(?:name|tool|success|data|error|meta|duration|size|available|modified_at)"[^\n]*\}\s*,?\s*$/gm,
     ''
   )
-  
-  // Nettoyer les lignes vides multiples
+
+  // 5. Enlever les blocs de code JSON (```json ... ```)
+  cleanedContent = cleanedContent.replace(
+    /```json[\s\S]*?```/g,
+    ''
+  )
+
+  // 6. NOUVEAU: Enlever les tableaux JSON compacts sur une seule ligne
+  cleanedContent = cleanedContent.replace(
+    /\[(?:\{[^}]{20,}\},?\s*){3,}\]/g,
+    ''
+  )
+
+  // 7. Enlever les objets JSON inline restants qui ressemblent à des données brutes
+  cleanedContent = cleanedContent.replace(
+    /"(?:name|size|available|modified_at|tool|success|error|data)"\s*:\s*(?:"[^"]*"|\d+|true|false|null)/g,
+    ''
+  )
+
+  // 8. Nettoyer les virgules orphelines, accolades et crochets isolés
+  cleanedContent = cleanedContent.replace(/[\{\}\[\]],?\s*[\{\}\[\]]/g, '')
+  cleanedContent = cleanedContent.replace(/^[\s,\{\}\[\]:]+$/gm, '')
+  cleanedContent = cleanedContent.replace(/[,\s]*[\{\}\[\]]\s*$/gm, '')
+
+  // 9. Nettoyer les lignes vides multiples
   cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n').trim()
-  
-  // Si après nettoyage il ne reste rien, afficher un message générique
-  if (!cleanedContent.trim()) {
+
+  // 9b. CRITIQUE: Nettoyer les \n échappés et autre contenu échappé
+  // Remplacer les \n littéraux par de vrais retours à la ligne
+  cleanedContent = cleanedContent.replace(/\\n/g, '\n')
+  // Nettoyer les \" échappés
+  cleanedContent = cleanedContent.replace(/\\"/g, '"')
+  // Nettoyer les \\ échappés
+  cleanedContent = cleanedContent.replace(/\\\\/g, '')
+
+  // 9c. CRITIQUE: Supprimer les gros blocs JSON tool avec du contenu échappé
+  // Pattern: {"tool": "write_file", "params": {"path": "...", "content": "...\n...\n..."}}
+  cleanedContent = cleanedContent.replace(
+    /\{\s*"tool"\s*:\s*"[^"]*"\s*,\s*"params"\s*:\s*\{[^}]{100,}\}\s*\}/g,
+    ''
+  )
+
+  // 9d. Supprimer les lignes qui sont juste des échappements ou du JSON partiel
+  cleanedContent = cleanedContent.replace(/^[\s\\n]+$/gm, '')
+
+  // 9e. Nettoyer à nouveau les lignes vides après tous ces remplacements
+  cleanedContent = cleanedContent.replace(/\n{3,}/g, '\n\n').trim()
+
+  // 10. Si après nettoyage il ne reste rien ou que du bruit
+  if (!cleanedContent.trim() || cleanedContent.trim().length < 10) {
     return '<em class="text-gray-500">Tâche exécutée avec succès</em>'
   }
-  
+
   // Traitement Markdown
   if (isMarkdown(cleanedContent)) {
     marked.setOptions({

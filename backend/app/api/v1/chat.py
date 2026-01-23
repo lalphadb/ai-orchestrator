@@ -11,11 +11,12 @@ from app.core.security import generate_uuid, get_current_user_optional
 from app.models import ChatRequest, ChatResponse
 from app.models.workflow import WorkflowResponse
 from app.services.react_engine.workflow_engine import workflow_engine
-from fastapi import (APIRouter, Depends, HTTPException, WebSocket,
+from fastapi import (APIRouter, Depends, HTTPException, Query, WebSocket,
                      WebSocketDisconnect)
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/chat")
+
 
 def normalize_model(model):
     """Normalise le model pour s'assurer que c'est une string"""
@@ -28,8 +29,6 @@ def normalize_model(model):
         return model
     # Sinon, convertir en string
     return str(model)
-
-
 
 
 @router.post("", response_model=WorkflowResponse)
@@ -108,9 +107,16 @@ async def chat(
 
 
 @router.websocket("/ws")
-async def websocket_chat(websocket: WebSocket, db: Session = Depends(get_db)):
+async def websocket_chat(
+    websocket: WebSocket,
+    token: str = Query(..., description="JWT authentication token"),
+    db: Session = Depends(get_db),
+):
     """
     WebSocket pour chat en temps réel avec streaming
+
+    Authentication: Requiert un token JWT valide passé en query parameter
+    Example: ws://localhost:8001/api/v1/chat/ws?token=eyJ...
 
     Messages supportés:
     - {message: "...", conversation_id: "...", model: "..."} - Chat normal
@@ -128,6 +134,19 @@ async def websocket_chat(websocket: WebSocket, db: Session = Depends(get_db)):
     - complete: Réponse finale
     - error: Erreur
     """
+    # Valider le token JWT avant d'accepter la connexion
+    from app.core.security import verify_token
+
+    payload = verify_token(token)
+    if not payload:
+        await websocket.close(code=1008, reason="Invalid or expired token")
+        return
+
+    user_id = payload.get("sub")
+    if not user_id:
+        await websocket.close(code=1008, reason="Invalid token payload")
+        return
+
     await websocket.accept()
 
     try:

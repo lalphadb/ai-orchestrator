@@ -51,6 +51,38 @@ async function request(endpoint, options = {}) {
 }
 
 export const api = {
+  // Méthodes génériques
+  async get(endpoint) {
+    return request(endpoint)
+  },
+  
+  async post(endpoint, data) {
+    return request(endpoint, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    })
+  },
+  
+  async put(endpoint, data) {
+    return request(endpoint, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    })
+  },
+  
+  async patch(endpoint, data) {
+    return request(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    })
+  },
+  
+  async delete(endpoint) {
+    return request(endpoint, {
+      method: 'DELETE'
+    })
+  },
+  
   // Auth
   async login(username, password) {
     return request('/auth/login', {

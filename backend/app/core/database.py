@@ -1,12 +1,15 @@
 """
 Database module - SQLite avec SQLAlchemy
 """
+
 import os
 from datetime import datetime
 from typing import Generator
-from sqlalchemy import create_engine, Column, String, Text, DateTime, Integer, Boolean, ForeignKey
+
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Index, Integer,
+                        String, Text, create_engine)
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import Session, relationship, sessionmaker
 
 from .config import settings
 
@@ -15,8 +18,7 @@ os.makedirs("data", exist_ok=True)
 
 # Engine SQLAlchemy
 engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"check_same_thread": False}  # SQLite only
+    settings.DATABASE_URL, connect_args={"check_same_thread": False}  # SQLite only
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -25,10 +27,12 @@ Base = declarative_base()
 
 # ===== MODELS =====
 
+
 class User(Base):
     """Utilisateur"""
+
     __tablename__ = "users"
-    
+
     id = Column(String(36), primary_key=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(100), unique=True, nullable=True)
@@ -37,31 +41,39 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relations
-    conversations = relationship("Conversation", back_populates="user")
+    conversations = relationship(
+        "Conversation", back_populates="user", cascade="all, delete-orphan"
+    )
+    feedbacks = relationship("Feedback", back_populates="user", cascade="all, delete-orphan")
 
 
 class Conversation(Base):
     """Conversation"""
+
     __tablename__ = "conversations"
-    
+
     id = Column(String(36), primary_key=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
     title = Column(String(200), default="Nouvelle conversation")
     model = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relations
     user = relationship("User", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
+    feedbacks = relationship(
+        "Feedback", back_populates="conversation", cascade="all, delete-orphan"
+    )
 
 
 class Message(Base):
     """Message dans une conversation"""
+
     __tablename__ = "messages"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     conversation_id = Column(String(36), ForeignKey("conversations.id"), nullable=False)
     role = Column(String(20), nullable=False)  # user, assistant, system
@@ -70,15 +82,17 @@ class Message(Base):
     tools_used = Column(Text, nullable=True)  # JSON list
     thinking = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relations
     conversation = relationship("Conversation", back_populates="messages")
+    feedbacks = relationship("Feedback", back_populates="message", cascade="all, delete-orphan")
 
 
 class Tool(Base):
     """Outil disponible"""
+
     __tablename__ = "tools"
-    
+
     id = Column(String(50), primary_key=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
@@ -88,7 +102,49 @@ class Tool(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Feedback(Base):
+    """Feedback utilisateur sur les réponses (pour apprentissage)"""
+
+    __tablename__ = "feedbacks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(
+        Integer, ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    conversation_id = Column(
+        String(36), ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    feedback_type = Column(String(20), nullable=False)  # positive, negative, correction
+
+    # Contexte
+    query = Column(Text, nullable=True)
+    response = Column(Text, nullable=True)
+    corrected_response = Column(Text, nullable=True)
+    tools_used = Column(Text, nullable=True)  # JSON
+    reason = Column(Text, nullable=True)
+
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # Relations
+    message = relationship("Message", back_populates="feedbacks")
+    conversation = relationship("Conversation", back_populates="feedbacks")
+    user = relationship("User", back_populates="feedbacks")
+
+
+# ===== DATABASE INDEXES (Performance) =====
+
+# Indices composites pour améliorer les requêtes courantes
+Index("ix_message_conversation_created", Message.conversation_id, Message.created_at)
+Index("ix_conversation_user_updated", Conversation.user_id, Conversation.updated_at)
+
+
 # ===== DATABASE FUNCTIONS =====
+
 
 def init_db():
     """Initialiser la base de données"""
