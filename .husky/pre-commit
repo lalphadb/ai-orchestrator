@@ -1,0 +1,14 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Run backend tests
+echo "🧪 Running backend tests..."
+cd backend && ./.venv/bin/python -m pytest tests/ -x -q || exit 1
+cd ..
+
+# Run frontend linting
+echo "🎨 Running frontend linting..."
+cd frontend && npm run lint || exit 1
+cd ..
+
+echo "✅ Pre-commit checks passed!"
