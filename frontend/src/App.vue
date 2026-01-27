@@ -14,11 +14,11 @@
             </span>
           </router-link>
         </div>
-        
+
         <!-- Navigation -->
         <nav class="flex items-center gap-2">
-          <router-link 
-            to="/" 
+          <router-link
+            to="/"
             class="px-3 py-1.5 rounded-lg text-sm hover:bg-gray-700/50 transition-colors"
             :class="$route.path === '/' ? 'bg-gray-700/50 text-white' : 'text-gray-400'"
           >
@@ -29,7 +29,7 @@
               Chat
             </span>
           </router-link>
-          
+
           <router-link
             to="/tools"
             class="px-3 py-1.5 rounded-lg text-sm hover:bg-gray-700/50 transition-colors"
@@ -70,12 +70,12 @@
             </span>
           </router-link>
         </nav>
-        
+
         <!-- Right side -->
         <div class="flex items-center gap-4">
           <!-- Status -->
           <StatusBar />
-          
+
           <!-- User -->
           <div v-if="auth.isAuthenticated" class="flex items-center gap-2 pl-4 border-l border-gray-700">
             <div class="w-7 h-7 rounded-full bg-primary-600/20 flex items-center justify-center">
@@ -84,7 +84,7 @@
               </span>
             </div>
             <span class="text-sm text-gray-400 hidden sm:inline">{{ auth.user?.username }}</span>
-            <button 
+            <button
               @click="handleLogout"
               class="p-1 text-gray-500 hover:text-red-400 transition-colors"
               title="Déconnexion"
@@ -94,7 +94,7 @@
               </svg>
             </button>
           </div>
-          <router-link 
+          <router-link
             v-else
             to="/login"
             class="px-3 py-1.5 rounded-lg text-sm bg-primary-600 text-white hover:bg-primary-500 transition-colors"
@@ -104,11 +104,17 @@
         </div>
       </div>
     </header>
-    
+
     <!-- Main Content -->
     <main class="pt-14">
       <router-view />
     </main>
+
+    <!-- Loading Bar -->
+    <LoadingBar />
+
+    <!-- Toast Notifications -->
+    <ToastContainer />
   </div>
 </template>
 
@@ -117,18 +123,26 @@ import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useChatStore } from '@/stores/chat'
+import { useToastStore } from '@/stores/toast'
+import { useLoadingStore } from '@/stores/loading'
 import StatusBar from '@/components/common/StatusBar.vue'
+import ToastContainer from '@/components/common/ToastContainer.vue'
+import LoadingBar from '@/components/common/LoadingBar.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
 const chat = useChatStore()
+
+// Initialize stores globally (for API client access)
+useToastStore()
+useLoadingStore()
 
 onMounted(async () => {
   // Check session validity
   if (auth.isAuthenticated) {
     await auth.checkSession()
   }
-  
+
   // Load models
   chat.fetchModels()
 })

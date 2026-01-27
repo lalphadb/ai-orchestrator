@@ -1,5 +1,5 @@
 /**
- * API Client unifié avec gestion JWT
+ * API Client unifié avec gestion JWT, retry automatique et gestion 401
  */
 
 const API_BASE = '/api/v1'
@@ -9,45 +9,127 @@ class ApiError extends Error {
     super(message)
     this.status = status
     this.data = data
+    this.isNetworkError = !status
   }
 }
 
 function getToken() {
-  return localStorage.getItem('token')
+  return sessionStorage.getItem('token')
 }
 
+/**
+ * Gère les erreurs 401 (token expiré)
+ */
+function handleUnauthorized() {
+  // Clear auth data
+  sessionStorage.removeItem('token')
+  sessionStorage.removeItem('user')
+
+  // Show toast notification
+  const toastStore = window.__TOAST_STORE__
+  if (toastStore) {
+    toastStore.warning('Session expirée. Veuillez vous reconnecter.', 5000)
+  }
+
+  // Redirect to login after a short delay
+  setTimeout(() => {
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login'
+    }
+  }, 1000)
+}
+
+/**
+ * Requête avec retry automatique sur erreurs réseau + loading state global
+ */
+async function requestWithRetry(endpoint, options = {}, retries = 3) {
+  let lastError
+  let requestId = null
+
+  // Start loading tracking
+  const loadingStore = window.__LOADING_STORE__
+  if (loadingStore) {
+    requestId = loadingStore.startRequest(endpoint)
+  }
+
+  try {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const token = getToken()
+
+        const headers = {
+          'Content-Type': 'application/json',
+          ...options.headers
+        }
+
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`
+        }
+
+        const response = await fetch(`${API_BASE}${endpoint}`, {
+          ...options,
+          headers
+        })
+
+        // Handle 401 Unauthorized (token expired)
+        if (response.status === 401) {
+          handleUnauthorized()
+          throw new ApiError('Session expirée', 401, {})
+        }
+
+        if (!response.ok) {
+          let errorData = {}
+          try {
+            errorData = await response.json()
+          } catch {}
+          throw new ApiError(
+            errorData.detail || `HTTP ${response.status}`,
+            response.status,
+            errorData
+          )
+        }
+
+        // Handle empty responses
+        const text = await response.text()
+        return text ? JSON.parse(text) : null
+
+      } catch (error) {
+        lastError = error
+
+        // Don't retry on client errors (4xx) except network errors
+        if (error.status && error.status < 500) {
+          throw error
+        }
+
+        // Don't retry on last attempt
+        if (attempt === retries - 1) {
+          throw error
+        }
+
+        // Retry only on server errors (5xx) or network errors
+        if (error.status >= 500 || error.isNetworkError) {
+          console.log(`Retry ${attempt + 1}/${retries} for ${endpoint}`)
+          // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
+          continue
+        }
+
+        throw error
+      }
+    }
+
+    throw lastError
+  } finally {
+    // End loading tracking
+    if (loadingStore && requestId) {
+      loadingStore.endRequest(requestId)
+    }
+  }
+}
+
+// Alias for backward compatibility
 async function request(endpoint, options = {}) {
-  const token = getToken()
-  
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers
-  }
-  
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-  
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers
-  })
-  
-  if (!response.ok) {
-    let errorData = {}
-    try {
-      errorData = await response.json()
-    } catch {}
-    throw new ApiError(
-      errorData.detail || `HTTP ${response.status}`,
-      response.status,
-      errorData
-    )
-  }
-  
-  // Handle empty responses
-  const text = await response.text()
-  return text ? JSON.parse(text) : null
+  return requestWithRetry(endpoint, options, 3)
 }
 
 export const api = {

@@ -146,6 +146,7 @@
 import { ref } from 'vue'
 import { useLearningStore } from '@/stores/learning'
 import { useChatStore } from '@/stores/chat'
+import { useToastStore } from '@/stores/toast'
 
 const props = defineProps({
   messageId: {
@@ -168,6 +169,7 @@ const props = defineProps({
 
 const learningStore = useLearningStore()
 const chatStore = useChatStore()
+const toast = useToastStore()
 
 const loading = ref(false)
 const feedbackSent = ref(null)
@@ -186,8 +188,10 @@ async function handlePositive() {
       props.toolsUsed
     )
     feedbackSent.value = 'positive'
+    toast.success('Merci pour votre retour positif!')
   } catch (err) {
     console.error('Erreur feedback positif:', err)
+    toast.error('Impossible d\'envoyer le feedback. Vérifiez votre connexion.')
   } finally {
     loading.value = false
   }
@@ -204,8 +208,10 @@ async function handleNegative() {
       props.toolsUsed
     )
     feedbackSent.value = 'negative'
+    toast.success('Merci pour votre retour, nous allons nous améliorer!')
   } catch (err) {
     console.error('Erreur feedback négatif:', err)
+    toast.error('Impossible d\'envoyer le feedback. Vérifiez votre connexion.')
   } finally {
     loading.value = false
   }
@@ -228,8 +234,10 @@ async function submitCorrection() {
     showCorrectionModal.value = false
     correctionText.value = ''
     commentText.value = ''
+    toast.success('Correction enregistrée avec succès!')
   } catch (err) {
     console.error('Erreur correction:', err)
+    toast.error('Impossible d\'envoyer la correction. Vérifiez votre connexion.')
   } finally {
     loading.value = false
   }
