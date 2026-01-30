@@ -77,11 +77,13 @@
 import { computed, h } from 'vue'
 import { useRoute } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const chat = useChatStore()
+const auth = useAuthStore()
 
-const wsConnected = computed(() => chat.wsState === 'connected')
+const wsConnected = computed(() => chat.wsState === 'connected' && auth.isAuthenticated)
 
 // Icon components (inline SVG)
 const DashboardIcon = { render: () => h('svg', { fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [

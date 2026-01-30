@@ -1136,6 +1136,13 @@ export const useChatStore = defineStore('chat', () => {
   // Computed: WebSocket connection status
   const isConnected = computed(() => wsState.value === 'connected')
 
+  // Computed: Loading state (any active run that's not completed)
+  const isLoading = computed(() => {
+    return Array.from(runs.value.values()).some(
+      run => run.status === 'running' || run.status === 'pending'
+    )
+  })
+
   // Watch model changes
   watch(currentModel, (newModel) => {
     localStorage.setItem('preferredModel', newModel)
@@ -1156,6 +1163,7 @@ export const useChatStore = defineStore('chat', () => {
     wsState,
     wsDiagnostics,
     isConnected,
+    isLoading,
     settings,
     // Multi-run state (Phase 2)
     runs,
