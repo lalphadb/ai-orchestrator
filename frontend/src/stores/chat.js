@@ -2,6 +2,8 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 import { wsClient } from '@/services/wsClient'
+import { isTerminalEvent, requiresRunId } from '@/services/ws/normalizeEvent'
+import { RunStatus, WorkflowPhase, PhaseStatus, createRunState, isTerminalStatus, getPhaseTimeout, updatePhaseStatus, setTerminal, updateWatchdogHeartbeat, hasWatchdogTimeout, failRunByWatchdog, clearWatchdogTimer } from '@/stores/runTypes'
 
 export const useChatStore = defineStore('chat', () => {
   // Conversations
@@ -9,241 +11,518 @@ export const useChatStore = defineStore('chat', () => {
   const currentConversation = ref(null)
   const conversationsLoading = ref(false)
   const searchQuery = ref('')
-  
+
   // Messages
   const messages = ref([])
-  const isLoading = ref(false)
-  
+
   // Models
-  const currentModel = ref(localStorage.getItem('preferredModel') || 'kimi-k2:1t-cloud')
+  const currentModel = ref(localStorage.getItem('preferredModel') || 'kimi-k2.5:cloud')
   const availableModels = ref([])
-  
-  // Run Session (traçabilité ReAct + Workflow)
-  const currentRun = ref(null)
-  const runHistory = ref([])
+  const modelsData = ref(null) // Full models response with categories
+
+  // Multi-Run State (Phase 2: v8 Frontend Stabilization)
+  const runs = ref(new Map())                   // Map<run_id, RunState>
+  const activeRunId = ref(null)                 // Currently displayed run_id
+  const pendingMessages = ref(new Map())        // Map<temp_id, {userMsg, assistantMsg, conversationId}>
+  const runsByConversation = ref(new Map())     // Map<conv_id, Set<run_id>>
+  const runHistory = ref([])                    // Legacy: archived runs
+  const orphanEvents = ref([])                  // Events without valid run_id (for debugging)
 
   // Phases du workflow
   const WORKFLOW_PHASES = ['spec', 'plan', 'execute', 'verify', 'repair', 'complete']
-  
+
+  // Watchdog Configuration (v8: configurable)
+  const watchdogConfig = ref({
+    checkInterval: 15000,   // Check every 15s
+    defaultTimeout: 90000,  // Default 90s timeout (increased from 60s for slow phases)
+    phaseTimeouts: {        // Per-phase timeouts (optional overrides)
+      verify: 120000,       // QA can take longer
+      repair: 120000,       // Repair cycles too
+      execute: 90000,
+    },
+  })
+
   // WebSocket state
   const wsState = ref('disconnected')
-  
+  const wsDiagnostics = ref({
+    url: '',
+    state: 'disconnected',
+    reconnectAttempts: 0,
+    lastCloseCode: null,
+    lastCloseReason: null,
+    tokenPresent: false
+  })
+
   // Settings
   const settings = ref({
     showThinking: localStorage.getItem('showThinking') !== 'false',
     showToolParams: localStorage.getItem('showToolParams') !== 'false',
-    compactMode: localStorage.getItem('compactMode') === 'true'
+    compactMode: localStorage.getItem('compactMode') === 'true',
   })
-  
+
   // Computed
   const filteredConversations = computed(() => {
     if (!searchQuery.value) return conversations.value
     const q = searchQuery.value.toLowerCase()
-    return conversations.value.filter(c => 
-      c.title?.toLowerCase().includes(q) ||
-      c.id?.toLowerCase().includes(q)
+    return conversations.value.filter(
+      (c) => c.title?.toLowerCase().includes(q) || c.id?.toLowerCase().includes(q)
     )
   })
-  
+
+  const modelsByCategory = computed(() => {
+    if (!modelsData.value?.categories) {
+      // Fallback: group all models under "other"
+      return {
+        other: availableModels.value.map((name) => ({ name })),
+      }
+    }
+    return modelsData.value.categories
+  })
+
+  // ============================================================
+  // Run Management Functions (Phase 2: Multi-Run Support)
+  // ============================================================
+
+  /**
+   * Create a new run and track it in the registry
+   */
+  function createRun(runId, conversationId, userMessage, assistantMessage) {
+    const isPlaceholder = !userMessage || !assistantMessage
+    
+    // Use factory function from runTypes
+    const run = createRunState(runId, {
+      conversationId,
+      messageId: userMessage?.id || null,
+      assistantMessageId: assistantMessage?.id || null,
+      isPlaceholder,
+    })
+    
+    // v8: Initialize phase timestamp for starting
+    run.phaseTimestamps.starting = run.startTime
+
+    runs.value.set(runId, run)
+
+    // Track run by conversation (if known)
+    if (conversationId) {
+      if (!runsByConversation.value.has(conversationId)) {
+        runsByConversation.value.set(conversationId, new Set())
+      }
+      runsByConversation.value.get(conversationId).add(runId)
+    }
+
+    // Set as active
+    activeRunId.value = runId
+
+    // Start watchdog
+    startWatchdog(runId)
+
+    return run
+  }
+
+  /**
+   * Get or create run (for out-of-order events)
+   * @param {string} runId - Run identifier
+   * @param {Object} event - Optional event data for context resolution
+   * @returns {Object} Run state object
+   */
+  function getOrCreateRun(runId, event = null) {
+    let run = runs.value.get(runId)
+    if (run) return run
+
+    // Try to resolve conversation from event or current context
+    const convId = event
+      ? event?.data?.conversation_id || event?.data?.conversationId || currentConversation.value?.id || null
+      : currentConversation.value?.id || null
+
+    // Check pending messages for matching conversation
+    if (convId) {
+      for (const pending of pendingMessages.value.values()) {
+        if (!pending.runId && pending.conversationId === convId) {
+          pending.runId = runId
+          pending.userMsg.run_id = runId
+          pending.assistantMsg.run_id = runId
+          run = createRun(runId, convId, pending.userMsg, pending.assistantMsg)
+          pendingMessages.value.delete(pending.tempId)
+          return run
+        }
+      }
+    }
+
+    // Create placeholder run
+    return createRun(runId, convId, null, null)
+  }
+
+  /**
+   * Mark run as complete and finalize associated message
+   */
+  function markRunComplete(runId, data) {
+    const run = runs.value.get(runId) || getOrCreateRun(runId)
+    if (run.status === RunStatus.COMPLETE || run.status === RunStatus.FAILED) {
+      console.warn(`[Run Registry] Terminal already set for run ${runId}`)
+      return
+    }
+
+    // v8: Use setTerminal helper
+    setTerminal(run, 'complete', {
+      response: data.response || data.content || run.tokens,
+      tools_used: data.tools_used || [],
+      iterations: data.iterations,
+      duration_ms: data.duration_ms || run.duration,
+      verification: data.verification,
+      verdict: data.verdict
+    })
+
+    run.workflowPhase = WorkflowPhase.COMPLETE
+    // Note: run.status, run.endTime, run.duration are handled by setTerminal (getters)
+    run.verification = data.verification
+    run.verdict = data.verdict
+    run.currentPhase = WorkflowPhase.COMPLETE
+
+    // Mark last active phase as complete
+    if (run.phaseHistory.length > 0) {
+      const lastPhase = run.phaseHistory[run.phaseHistory.length - 1].phase
+      updatePhaseStatus(run, lastPhase, PhaseStatus.COMPLETE)
+    }
+    updatePhaseStatus(run, 'complete', PhaseStatus.COMPLETE)
+
+    // Update associated message
+    const msg = messages.value.find((m) => m.id === run.assistantMessageId)
+    if (msg) {
+      msg.streaming = false
+      msg.content = data.response || data.content || run.tokens
+      msg.tools_used = data.tools_used || []
+      msg.iterations = data.iterations
+      msg.duration_ms = data.duration_ms || run.duration
+      msg.model = data.model_used || data.model
+      msg.verification = data.verification
+      msg.verdict = data.verdict
+      msg.finalized_at = Date.now()
+    }
+
+    // Archive run
+    runHistory.value.unshift({ ...run })
+    if (runHistory.value.length > 50) {
+      runHistory.value.pop()
+    }
+
+    stopWatchdog(runId)
+  }
+
+  /**
+   * Mark run as failed with error message
+   */
+  function markRunFailed(runId, errorMsg) {
+    const run = runs.value.get(runId) || getOrCreateRun(runId)
+    if (run.status === RunStatus.COMPLETE || run.status === RunStatus.FAILED) {
+      return
+    }
+
+    // v8: Use setTerminal helper
+    setTerminal(run, 'error', {
+      message: errorMsg,
+      phase: run.workflowPhase
+    })
+
+    run.workflowPhase = WorkflowPhase.COMPLETE
+    // Note: run.status, run.endTime, run.duration are handled by setTerminal (getters)
+    run.error = errorMsg
+    run.currentPhase = 'error'
+
+    // Update associated message
+    const msg = messages.value.find((m) => m.id === run.assistantMessageId)
+    if (msg) {
+      msg.streaming = false
+      msg.content = `❌ Erreur: ${errorMsg}`
+      msg.isError = true
+    }
+
+    stopWatchdog(runId)
+    console.error(`[Run Registry] Failed run ${runId}: ${errorMsg}`)
+  }
+
+  /**
+   * Cleanup old completed runs to prevent memory bloat
+   */
+  function cleanupOldRuns(conversationId) {
+    const runIds = runsByConversation.value.get(conversationId)
+    if (!runIds) return
+
+    const now = Date.now()
+    const CLEANUP_THRESHOLD = 300000 // 5 minutes
+
+    for (const runId of Array.from(runIds)) {
+      const run = runs.value.get(runId)
+      if (run && run.status !== RunStatus.RUNNING && run.endTime && now - run.endTime > CLEANUP_THRESHOLD) {
+        runs.value.delete(runId)
+        runIds.delete(runId)
+        console.log(`[Run Registry] Cleaned up old run ${runId}`)
+      }
+    }
+  }
+
+  // ============================================================
   // Initialize WebSocket listeners
   function initWebSocket() {
     // Éviter les listeners dupliqués
     if (wsClient._listenersInitialized) {
-      console.log("WebSocket listeners already initialized, skipping")
       return
     }
     wsClient._listenersInitialized = true
     wsClient.on('stateChange', (state) => {
       wsState.value = state
+      wsDiagnostics.value = wsClient.getDiagnostics()
     })
 
-    wsClient.on('thinking', (data, runId) => {
-      if (currentRun.value) {
-        currentRun.value.thinking.push({
-          message: data.message,
-          iteration: data.iteration,
-          phase: data.phase,
-          timestamp: Date.now()
-        })
-        if (data.phase) {
-          currentRun.value.workflowPhase = data.phase
-        }
-        currentRun.value.currentPhase = 'thinking'
-        currentRun.value.currentIteration = data.iteration
-      }
+    wsClient.on('event', (event) => {
+      handleNormalizedEvent(event)
     })
 
-    // Changement de phase workflow
-    wsClient.on('phase', (data, runId) => {
-      if (currentRun.value) {
-        currentRun.value.workflowPhase = data.phase
-        currentRun.value.phaseHistory.push({
-          phase: data.phase,
-          status: data.status,
-          message: data.message,
-          timestamp: Date.now()
-        })
-        currentRun.value.currentPhase = data.phase
-      }
-    })
-
-    // Item de vérification QA
-    wsClient.on('verificationItem', (data, runId) => {
-      if (currentRun.value) {
-        const existingIdx = currentRun.value.verificationItems.findIndex(
-          v => v.check_name === data.check_name
-        )
-        const item = {
-          check_name: data.check_name,
-          status: data.status,
-          output: data.output,
-          error: data.error,
-          timestamp: Date.now()
-        }
-        if (existingIdx >= 0) {
-          currentRun.value.verificationItems[existingIdx] = item
-        } else {
-          currentRun.value.verificationItems.push(item)
-        }
-      }
-    })
-
-    // NOUVEAU: Résultat de re-vérification
-    wsClient.on('verification_complete', (data, runId) => {
-      if (currentRun.value) {
-        currentRun.value.verification = data.verification
-        currentRun.value.verdict = data.verdict
-        currentRun.value.workflowPhase = 'complete'
-        
-        // Notification visuelle
-        if (data.action === 'rerun_verify') {
-          console.log('Re-vérification terminée:', data.verdict?.status)
-        }
-      }
-    })
-
-    wsClient.on('tool', (data, runId) => {
-      if (currentRun.value) {
-        currentRun.value.toolCalls.push({
-          tool: data.tool,
-          params: data.params,
-          iteration: data.iteration,
-          timestamp: Date.now()
-        })
-        currentRun.value.currentPhase = 'tool'
-        currentRun.value.currentTool = data.tool
-      }
-    })
-
-    wsClient.on('tokens', (tokens) => {
-      if (currentRun.value) {
-        currentRun.value.tokens += tokens
-        currentRun.value.currentPhase = 'streaming'
-        updateStreamingMessage(currentRun.value.tokens)
-      }
-    })
-
-    wsClient.on('complete', (data, runId) => {
-      if (currentRun.value) {
-        currentRun.value.complete = data
-        currentRun.value.currentPhase = 'complete'
-        currentRun.value.workflowPhase = 'complete'
-        currentRun.value.endTime = Date.now()
-        currentRun.value.duration = currentRun.value.endTime - currentRun.value.startTime
-        currentRun.value.verification = data.verification
-        currentRun.value.verdict = data.verdict
-
-        // Finalize message avec le contenu final
-        finalizeMessage(data)
-
-        // Archive run
-        runHistory.value.unshift({ ...currentRun.value })
-        if (runHistory.value.length > 50) {
-          runHistory.value.pop()
-        }
-      }
-      isLoading.value = false
-    })
-
-    wsClient.on('error', (error, runId) => {
-      if (currentRun.value) {
-        currentRun.value.error = error
-        currentRun.value.currentPhase = 'error'
-        currentRun.value.workflowPhase = 'failed'
-      }
-      addErrorMessage(typeof error === 'string' ? error : error.message || 'Erreur inconnue')
-      isLoading.value = false
-    })
-
-    wsClient.on('conversationCreated', (data) => {
-      currentConversation.value = { id: data.id, title: data.title }
-      fetchConversations()
+    wsClient.on('error', (error) => {
+      // WebSocket connection error (no run_id)
+      addErrorMessage(error?.message || 'WebSocket error')
     })
 
     // NOUVEAU: Réception de la liste des modèles
     wsClient.on('models', (data) => {
       if (data.models) {
         availableModels.value = data.models
-        console.log(`Modèles reçus: ${data.count}`)
       }
     })
 
     wsClient.connect()
   }
-  
-  /**
-   * Met à jour le message en streaming - AMÉLIORÉ
-   * Préserve le formatage et évite les remplacements intempestifs
-   */
-  function updateStreamingMessage(content) {
-    const lastMsg = messages.value[messages.value.length - 1]
-    if (lastMsg && lastMsg.role === 'assistant' && lastMsg.streaming) {
-      // Préserver le contenu existant si le nouveau est vide
-      if (content && content.trim()) {
-        lastMsg.content = content
-        lastMsg.lastUpdate = Date.now()
+
+  function resolveRunId(event) {
+    if (event.run_id) return event.run_id
+    const dataRunId = event.data?.run_id || event.data?.runId
+    if (dataRunId) return dataRunId
+
+    const convId = event.data?.conversation_id || event.data?.conversationId
+    if (convId && runsByConversation.value.has(convId)) {
+      const runIds = Array.from(runsByConversation.value.get(convId))
+      const running = runIds
+        .map((id) => runs.value.get(id))
+        .filter((r) => r && r.status === RunStatus.RUNNING)
+      if (running.length === 1) return running[0].id
+    }
+
+    const runningRuns = Array.from(runs.value.values()).filter((r) => r.status === RunStatus.RUNNING)
+    if (runningRuns.length === 1) return runningRuns[0].id
+
+    return null
+  }
+
+  function handleNormalizedEvent(event) {
+    if (!event || !event.type) return
+
+    const resolvedRunId = resolveRunId(event)
+    const data = event.data || {}
+
+    // V8: Enforce backend authority - reject events without run_id (except conversation_created)
+    if (!resolvedRunId && event.type !== 'conversation_created') {
+      orphanEvents.value.push({ ...event, receivedAt: Date.now(), rejected: true })
+      if (orphanEvents.value.length > 100) orphanEvents.value.shift()
+      
+      // Try to handle tokens gracefully for UX
+      if (event.type === 'thinking' && data.kind === 'token') {
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg && lastMsg.streaming) {
+          lastMsg.content += data.content || ''
+          lastMsg.lastUpdate = Date.now()
+        }
       }
+      
+      // Handle explicit errors
+      if (event.type === 'error') {
+        addErrorMessage(data.message || data.error || 'Erreur inconnue')
+      }
+      
+      return
+    }
+
+    switch (event.type) {
+      case 'thinking': {
+        if (data.kind === 'token') {
+          const run = getOrCreateRun(resolvedRunId, event)
+          run.tokens += data.content || ''
+          run.currentPhase = 'streaming'
+          run.lastEventTime = Date.now()
+          run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
+
+          // Update watchdog heartbeat
+          run.watchdog.lastHeartbeatAt = run.lastEventAt
+
+          const msg = messages.value.find((m) => m.id === run.assistantMessageId)
+          if (msg && msg.streaming) {
+            msg.content = run.tokens
+            msg.lastUpdate = Date.now()
+          }
+          break
+        }
+
+        const run = getOrCreateRun(resolvedRunId, event)
+        run.thinking.push({  // V8: thinking array
+          message: data.message,
+          iteration: data.iteration,
+          phase: data.phase,
+          timestamp: Date.now(),
+        })
+        if (data.phase) {
+          run.workflowPhase = data.phase
+        }
+        run.currentPhase = 'thinking'
+        run.currentIteration = data.iteration
+        run.lastEventTime = Date.now()
+        run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
+
+        // Update watchdog heartbeat
+        run.watchdog.lastHeartbeatAt = run.lastEventAt
+        break
+      }
+
+      case 'phase': {
+        const run = getOrCreateRun(resolvedRunId, event)
+        const now = Date.now()
+        run.workflowPhase = data.phase
+
+        // v8: Update phase status and timestamps
+        if (data.status) {
+          updatePhaseStatus(run, data.phase, data.status)
+        } else {
+          // Default to running if no status provided
+          updatePhaseStatus(run, data.phase, PhaseStatus.RUNNING)
+        }
+
+        // Legacy: Record phase timestamp
+        if (run.phaseTimestamps && data.phase in run.phaseTimestamps) {
+          run.phaseTimestamps[data.phase] = now
+        }
+
+        run.phaseHistory.push({
+          phase: data.phase,
+          status: data.status,
+          message: data.message,
+          timestamp: now,
+        })
+        run.currentPhase = data.phase
+        run.lastEventTime = now
+        run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
+
+        // Update watchdog heartbeat
+        run.watchdog.lastHeartbeatAt = run.lastEventAt
+        break
+      }
+
+      case 'verification_item': {
+        const run = getOrCreateRun(resolvedRunId, event)
+        const checkName = data.check_name || data.name || data.check || 'unknown'
+        const status =
+          data.status || (data.passed === true ? 'passed' : data.passed === false ? 'failed' : null)
+        const item = {
+          check_name: checkName,
+          status: status || 'running',
+          output: data.output,
+          error: data.error,
+          timestamp: Date.now(),
+        }
+
+        const existingIdx = run.verification.findIndex((v) => v.check_name === checkName)
+        if (existingIdx >= 0) {
+          run.verification[existingIdx] = item
+        } else {
+          run.verification.push(item)
+        }
+        run.lastEventTime = Date.now()
+        run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
+
+        // Update watchdog heartbeat
+        run.watchdog.lastHeartbeatAt = run.lastEventAt
+        break
+      }
+
+      case 'tool': {
+        const run = getOrCreateRun(resolvedRunId, event)
+        run.tools.push({  // V8: Use 'tools' instead of 'toolCalls'
+          tool: data.tool,
+          params: data.params || data.input || {},
+          iteration: data.iteration,
+          status: data.status,
+          timestamp: Date.now(),
+        })
+        run.currentPhase = 'tool'
+        run.currentTool = data.tool
+        run.lastEventTime = Date.now()
+        run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
+
+        // Update watchdog heartbeat
+        run.watchdog.lastHeartbeatAt = run.lastEventAt
+        break
+      }
+
+      case 'complete': {
+        const run = getOrCreateRun(resolvedRunId, event)
+        run.terminal = true // V8: Mark as terminal
+        markRunComplete(resolvedRunId, data)
+        break
+      }
+
+      case 'error': {
+        const run = getOrCreateRun(resolvedRunId, event)
+        run.terminal = true // V8: Mark as terminal
+        const errorMsg = data.message || data.error || 'Unknown error'
+        markRunFailed(resolvedRunId, errorMsg)
+        break
+      }
+
+      case 'conversation_created': {
+        const convId = data.conversation_id || data.id
+        if (!convId) {
+          console.error('[WS] conversation_created missing conversation_id')
+          return
+        }
+
+        currentConversation.value = {
+          id: convId,
+          title: data.title || currentConversation.value?.title,
+        }
+
+        if (!resolvedRunId) {
+          fetchConversations()
+          return
+        }
+
+        let run = runs.value.get(resolvedRunId)
+
+        if (run && run.isPlaceholder) {
+          run.conversationId = convId
+          run.isPlaceholder = false
+
+          if (!runsByConversation.value.has(convId)) {
+            runsByConversation.value.set(convId, new Set())
+          }
+          runsByConversation.value.get(convId).add(resolvedRunId)
+        } else if (!run) {
+          const pending = Array.from(pendingMessages.value.values()).find(
+            (p) => !p.runId && p.conversationId === convId
+          )
+
+          if (pending) {
+            pending.runId = resolvedRunId
+            createRun(resolvedRunId, convId, pending.userMsg, pending.assistantMsg)
+            pendingMessages.value.delete(pending.tempId)
+          } else {
+            createRun(resolvedRunId, convId, null, null)
+          }
+        }
+
+        fetchConversations()
+        break
+      }
+
+      default:
     }
   }
-  
-  /**
-   * Finalise le message après streaming - AMÉLIORÉ
-   * Corrige le problème de lisibilité
-   */
-  function finalizeMessage(data) {
-    const lastMsg = messages.value[messages.value.length - 1]
-    if (lastMsg && lastMsg.role === 'assistant') {
-      // Récupérer le contenu final
-      const finalContent = data.response || data.content || ''
-      
-      // TOUJOURS utiliser la réponse finale si elle existe
-      // Cela évite d'afficher le JSON brut accumulé pendant le streaming
-      if (finalContent && finalContent.trim()) {
-        lastMsg.content = finalContent
-      } else if (currentRun.value?.tokens) {
-        // Fallback: utiliser les tokens streamés si pas de réponse finale
-        lastMsg.content = currentRun.value.tokens
-      }
-      
-      lastMsg.streaming = false
-      lastMsg.tools_used = data.tools_used || []
-      lastMsg.iterations = data.iterations
-      lastMsg.duration_ms = data.duration_ms
-      lastMsg.model = data.model_used || data.model
-      
-      // Ajouter les métadonnées de vérification
-      if (data.verification) {
-        lastMsg.verification = data.verification
-      }
-      if (data.verdict) {
-        lastMsg.verdict = data.verdict
-      }
-      
-      // Timestamp de finalisation
-      lastMsg.finalized_at = Date.now()
-    }
-  }
-  
+
   function addErrorMessage(error) {
     const lastMsg = messages.value[messages.value.length - 1]
     if (lastMsg && lastMsg.streaming) {
@@ -256,11 +535,144 @@ export const useChatStore = defineStore('chat', () => {
         role: 'assistant',
         content: `❌ Erreur: ${error}`,
         isError: true,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
       })
     }
   }
-  
+
+  // ============================================================
+  // Per-Run Watchdog System (V8 Complete Implementation)
+  // ============================================================
+
+  /**
+   * Start watchdog for a specific run (V8)
+   * Features:
+   * - Per-run timer with configurable timeout
+   * - Heartbeat tracking on every WS event
+   * - Automatic failure on timeout
+   * - Cleanup on terminal state
+   */
+  function startWatchdog(runId) {
+    const run = runs.value.get(runId)
+    if (!run) {
+      console.warn(`[Watchdog] Cannot start: run ${runId} not found`)
+      return
+    }
+
+    // Clear any existing timer first
+    clearWatchdogTimer(run)
+
+    const config = watchdogConfig.value
+    const WATCHDOG_INTERVAL = config.checkInterval
+
+    // Set initial timeout based on current phase
+    const phaseTimeout = getPhaseTimeout(run.workflowPhase)
+    run.watchdog.timeoutMs = phaseTimeout
+    run.watchdog.lastHeartbeatAt = new Date().toISOString()
+
+    // Create the watchdog interval
+    const timerId = setInterval(() => {
+      const currentRun = runs.value.get(runId)
+      
+      // Run was deleted - clean up
+      if (!currentRun) {
+        clearInterval(timerId)
+        return
+      }
+
+      // Check for timeout
+      if (hasWatchdogTimeout(currentRun)) {
+        const elapsed = Date.now() - new Date(currentRun.watchdog.lastHeartbeatAt).getTime()
+        console.error(`[Watchdog] Run ${runId} timeout after ${elapsed}ms in phase ${currentRun.workflowPhase}`)
+        
+        // Fail the run
+        failRunByWatchdog(currentRun, `Timeout: no events for ${Math.round(elapsed / 1000)}s in phase ${currentRun.workflowPhase}`)
+        
+        // Update UI
+        const msg = messages.value.find((m) => m.id === currentRun.assistantMessageId)
+        if (msg) {
+          msg.streaming = false
+          msg.content = `❌ Timeout: Run stalled for ${Math.round(elapsed / 1000)} seconds`
+          msg.isError = true
+        }
+        
+        // Clean up timer
+        clearWatchdogTimer(currentRun)
+        return
+      }
+
+      // Stop watchdog if run is terminal
+      if (isTerminalStatus(currentRun.status)) {
+        clearWatchdogTimer(currentRun)
+      }
+    }, WATCHDOG_INTERVAL)
+
+    // Store timer ID
+    run.watchdog.timerId = timerId
+    console.log(`[Watchdog] Started for run ${runId} (timeout: ${run.watchdog.timeoutMs}ms)`)
+  }
+
+  /**
+   * Update watchdog heartbeat on WebSocket event (V8)
+   * Called automatically by handleNormalizedEvent for every event
+   */
+  function updateWatchdogFromEvent(runId) {
+    const run = runs.value.get(runId)
+    if (!run || !run.watchdog) return
+
+    // Update heartbeat timestamp
+    updateWatchdogHeartbeat(run)
+    
+    // Dynamically adjust timeout based on current phase
+    const phaseTimeout = getPhaseTimeout(run.workflowPhase)
+    if (phaseTimeout !== run.watchdog.timeoutMs) {
+      run.watchdog.timeoutMs = phaseTimeout
+      console.log(`[Watchdog] Run ${runId} timeout adjusted to ${phaseTimeout}ms for phase ${run.workflowPhase}`)
+    }
+  }
+
+  /**
+   * Stop watchdog for a specific run (V8)
+   */
+  function stopWatchdog(runId) {
+    const run = runs.value.get(runId)
+    if (!run) return
+
+    clearWatchdogTimer(run)
+    console.log(`[Watchdog] Stopped for run ${runId}`)
+  }
+
+  /**
+   * Stop all active watchdogs (cleanup on unmount/conversation change)
+   */
+  function stopAllWatchdogs() {
+    let count = 0
+    for (const [runId, run] of runs.value.entries()) {
+      if (run.watchdog?.timerId) {
+        clearInterval(run.watchdog.timerId)
+        run.watchdog.timerId = null
+        count++
+      }
+    }
+    console.log(`[Watchdog] Stopped ${count} watchdog(s)`)
+  }
+
+  /**
+   * Cleanup watchdogs for a specific conversation (navigation)
+   */
+  function cleanupWatchdogsForConversation(conversationId) {
+    const runIds = runsByConversation.value.get(conversationId)
+    if (!runIds) return
+
+    for (const runId of runIds) {
+      const run = runs.value.get(runId)
+      if (run && isTerminalStatus(run.status)) {
+        // Only clear completed/failed runs
+        clearWatchdogTimer(run)
+      }
+    }
+  }
+
   // API Methods
   async function fetchConversations() {
     conversationsLoading.value = true
@@ -272,22 +684,40 @@ export const useChatStore = defineStore('chat', () => {
       conversationsLoading.value = false
     }
   }
-  
+
   async function selectConversation(convId) {
     try {
       const conv = await api.getConversation(convId)
       currentConversation.value = conv
       messages.value = conv.messages || []
-      currentRun.value = null
+
+      // Set activeRunId to most recent run for this conversation if exists
+      const conversationRuns = runsByConversation.value.get(convId)
+      if (conversationRuns && conversationRuns.size > 0) {
+        // Find most recent active run
+        const runIds = Array.from(conversationRuns)
+        const activeRuns = runIds
+          .map((id) => runs.value.get(id))
+          .filter((r) => r && r.status === RunStatus.RUNNING)
+          .sort((a, b) => b.startTime - a.startTime)
+
+        if (activeRuns.length > 0) {
+          activeRunId.value = activeRuns[0].id
+        } else {
+          activeRunId.value = null
+        }
+      } else {
+        activeRunId.value = null
+      }
     } catch (e) {
       console.error('Failed to load conversation:', e)
     }
   }
-  
+
   async function renameConversation(convId, newTitle) {
     try {
       await api.renameConversation(convId, newTitle)
-      const conv = conversations.value.find(c => c.id === convId)
+      const conv = conversations.value.find((c) => c.id === convId)
       if (conv) conv.title = newTitle
       if (currentConversation.value?.id === convId) {
         currentConversation.value.title = newTitle
@@ -297,11 +727,11 @@ export const useChatStore = defineStore('chat', () => {
       throw e
     }
   }
-  
+
   async function deleteConversation(convId) {
     try {
       await api.deleteConversation(convId)
-      conversations.value = conversations.value.filter(c => c.id !== convId)
+      conversations.value = conversations.value.filter((c) => c.id !== convId)
       if (currentConversation.value?.id === convId) {
         newConversation()
       }
@@ -310,102 +740,127 @@ export const useChatStore = defineStore('chat', () => {
       throw e
     }
   }
-  
+
   async function sendMessage(content) {
-    if (!content.trim() || isLoading.value) return
-    
+    if (!content.trim()) return
+
+    const conversationId = currentConversation.value?.id
+
     // Add user message
-    messages.value.push({
+    const userMsg = {
       id: Date.now(),
       role: 'user',
       content: content,
-      created_at: new Date().toISOString()
-    })
-    
-    // Prepare assistant message for streaming
-    messages.value.push({
+      run_id: null, // Will be set when run_id received
+      created_at: new Date().toISOString(),
+    }
+    messages.value.push(userMsg)
+
+    // Prepare assistant message placeholder
+    const assistantMsg = {
       id: Date.now() + 1,
       role: 'assistant',
       content: '',
+      run_id: null, // Will be set when run_id received
       streaming: true,
-      created_at: new Date().toISOString()
-    })
-    
-    // Create new run session with workflow support
-    currentRun.value = {
-      id: Date.now().toString(),
-      startTime: Date.now(),
-      endTime: null,
-      duration: null,
-      thinking: [],
-      toolCalls: [],
-      tokens: '',
-      complete: null,
-      error: null,
-      currentPhase: 'starting',
-      currentIteration: 0,
-      currentTool: null,
-      message: content,
-      model: currentModel.value,
-      // Champs workflow
-      workflowPhase: 'starting',
-      phaseHistory: [],
-      verificationItems: [],
-      verification: null,
-      verdict: null,
-      repairCycles: 0
+      created_at: new Date().toISOString(),
     }
-    
-    isLoading.value = true
-    
-    // Try WebSocket first
-    const sent = wsClient.sendMessage(content, currentConversation.value?.id, currentModel.value)
-    
+    messages.value.push(assistantMsg)
+
+    // Create pending entry (no run_id yet - backend will generate it)
+    const tempId = `pending-${Date.now()}`
+    pendingMessages.value.set(tempId, {
+      tempId,
+      conversationId,
+      userMsg,
+      assistantMsg,
+      runId: null, // Will be filled when conversation_created event arrives
+    })
+
+    // Send to backend (backend will generate run_id)
+    const sent = wsClient.sendMessage(content, conversationId, currentModel.value)
+
     if (!sent) {
       // Fallback to HTTP
       await sendMessageHTTP(content)
     }
+
+    // Cleanup old runs
+    if (conversationId) {
+      cleanupOldRuns(conversationId)
+    }
   }
-  
+
   async function sendMessageHTTP(content) {
     try {
       const data = await api.sendMessage(content, currentConversation.value?.id, currentModel.value)
-      
+
       if (!currentConversation.value) {
         currentConversation.value = { id: data.conversation_id }
         await fetchConversations()
       }
-      
-      // Update last message
-      const lastMsg = messages.value[messages.value.length - 1]
-      if (lastMsg && lastMsg.streaming) {
-        lastMsg.content = data.response
-        lastMsg.streaming = false
-        lastMsg.tools_used = data.tools_used
-        lastMsg.iterations = data.iterations
-        lastMsg.duration_ms = data.duration_ms
-        lastMsg.model = data.model_used
+
+      // CRITICAL: Use backend's run_id if provided, otherwise warn and skip run creation
+      const backendRunId = data.run_id
+      if (!backendRunId) {
+        console.error('[HTTP Fallback] Backend did not provide run_id - cannot create run')
+        // Update messages directly (legacy v7 behavior)
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg && lastMsg.streaming) {
+          lastMsg.content = data.response
+          lastMsg.streaming = false
+          lastMsg.tools_used = data.tools_used
+        }
+        return
       }
-      
-      if (currentRun.value) {
-        currentRun.value.complete = data
-        currentRun.value.currentPhase = 'complete'
-        currentRun.value.endTime = Date.now()
+
+      // Find pending message
+      const pending = Array.from(pendingMessages.value.values()).find((p) => !p.runId)
+      if (pending) {
+        // Create run with backend's run_id
+        const run = createRun(backendRunId, data.conversation_id, pending.userMsg, pending.assistantMsg)
+
+        // Populate toolCalls from tools_used
+        if (data.tools_used) {
+          run.toolCalls = data.tools_used.map((tool, i) => ({
+            tool: typeof tool === 'string' ? tool : tool.tool,
+            params: tool.params || {},
+            iteration: i,
+            timestamp: Date.now(),
+          }))
+        }
+
+        // Mark as complete immediately (HTTP is synchronous)
+        markRunComplete(backendRunId, data)
+
+        pendingMessages.value.delete(pending.tempId)
+      } else {
+        // Fallback: update last message directly
+        const lastMsg = messages.value[messages.value.length - 1]
+        if (lastMsg && lastMsg.streaming) {
+          lastMsg.content = data.response
+          lastMsg.streaming = false
+          lastMsg.tools_used = data.tools_used
+          lastMsg.iterations = data.iterations
+          lastMsg.duration_ms = data.duration_ms
+          lastMsg.model = data.model_used
+        }
       }
     } catch (e) {
       addErrorMessage(e.message)
-      if (currentRun.value) {
-        currentRun.value.error = e.message
-        currentRun.value.currentPhase = 'error'
+
+      // Clean up pending message without creating run (no backend run_id)
+      const pending = Array.from(pendingMessages.value.values()).find((p) => !p.runId)
+      if (pending) {
+        pendingMessages.value.delete(pending.tempId)
+        console.warn('[HTTP Fallback] Request failed, no run created (no backend run_id)')
       }
-    } finally {
-      isLoading.value = false
     }
   }
-  
+
   async function retryLastMessage() {
     if (messages.value.length < 2) return
-    
+
     let lastUserMsgIndex = -1
     for (let i = messages.value.length - 1; i >= 0; i--) {
       if (messages.value[i].role === 'user') {
@@ -413,18 +868,20 @@ export const useChatStore = defineStore('chat', () => {
         break
       }
     }
-    
+
     if (lastUserMsgIndex === -1) return
-    
+
     const content = messages.value[lastUserMsgIndex].content
     messages.value = messages.value.slice(0, lastUserMsgIndex)
     await sendMessage(content)
   }
-  
+
   async function fetchModels() {
     try {
       const data = await api.getModels()
-      availableModels.value = (data.models || []).map(m => typeof m === 'string' ? m : m.name)
+      // Store full response with categories
+      modelsData.value = data
+      availableModels.value = (data.models || []).map((m) => (typeof m === 'string' ? m : m.name))
       if (data.default_model && !localStorage.getItem('preferredModel')) {
         currentModel.value = data.default_model
       }
@@ -438,30 +895,35 @@ export const useChatStore = defineStore('chat', () => {
    */
   function refreshModels() {
     const sent = wsClient.send({
-      action: 'get_models'
+      action: 'get_models',
     })
     if (!sent) {
       // Fallback HTTP
       fetchModels()
     }
   }
-  
+
   function setModel(model) {
     currentModel.value = model
     localStorage.setItem('preferredModel', model)
   }
-  
+
   function newConversation() {
+    // Stop all active watchdogs
+    stopAllWatchdogs()
+
     currentConversation.value = null
     messages.value = []
-    currentRun.value = null
+    activeRunId.value = null
+    pendingMessages.value.clear()
+    // Note: We keep runs Map for history/inspection
   }
-  
+
   function updateSettings(key, value) {
     settings.value[key] = value
     localStorage.setItem(key, value.toString())
   }
-  
+
   function exportConversation(format = 'json') {
     if (!currentConversation.value) return null
 
@@ -469,7 +931,7 @@ export const useChatStore = defineStore('chat', () => {
       id: currentConversation.value.id,
       title: currentConversation.value.title,
       messages: messages.value,
-      exportedAt: new Date().toISOString()
+      exportedAt: new Date().toISOString(),
     }
 
     if (format === 'json') {
@@ -495,94 +957,190 @@ export const useChatStore = defineStore('chat', () => {
 
   /**
    * Relance uniquement la vérification QA (sans ré-exécuter)
-   * CORRIGÉ: Maintenant câblé au backend
+   * CORRIGÉ: Maintenant câblé au backend avec run_id
    */
   async function rerunVerification() {
-    if (!currentRun.value?.complete) {
-      console.warn('Pas de run à re-vérifier')
+    const runId = activeRunId.value
+    if (!runId) {
+      console.warn('No active run to re-verify')
       return false
     }
 
-    // Mettre à jour l'état
-    currentRun.value.workflowPhase = 'verify'
-    currentRun.value.currentPhase = 'verify'
+    const run = runs.value.get(runId)
+    if (!run) {
+      console.warn('Run not found')
+      return false
+    }
+
+    // Update run state
+    run.workflowPhase = WorkflowPhase.VERIFY
+    run.currentPhase = 'verify'
 
     const sent = wsClient.send({
       action: 'rerun_verify',
+      run_id: runId, // CRITICAL: Include run_id
       conversation_id: currentConversation.value?.id,
-      model: currentModel.value
+      model: currentModel.value,
     })
 
     if (!sent) {
       console.error('Cannot send rerun_verify: WebSocket not connected')
       return false
     }
-    
+
     return true
   }
 
   /**
    * Force un cycle de réparation
-   * CORRIGÉ: Maintenant câblé au backend
+   * CORRIGÉ: Maintenant câblé au backend avec run_id
    */
   async function forceRepair() {
-    if (!currentRun.value?.complete) {
-      console.warn('Pas de run à réparer')
+    const runId = activeRunId.value
+    if (!runId) {
+      console.warn('No active run to repair')
       return false
     }
 
-    // Mettre à jour l'état
-    currentRun.value.workflowPhase = 'repair'
-    currentRun.value.currentPhase = 'repair'
-    currentRun.value.repairCycles++
+    const run = runs.value.get(runId)
+    if (!run) {
+      console.warn('Run not found')
+      return false
+    }
+
+    // Update run state
+    run.workflowPhase = WorkflowPhase.REPAIR
+    run.currentPhase = 'repair'
+    run.repairCycles = (run.repairCycles || 0) + 1
 
     const sent = wsClient.send({
       action: 'force_repair',
+      run_id: runId, // CRITICAL: Include run_id
       conversation_id: currentConversation.value?.id,
-      model: currentModel.value
+      model: currentModel.value,
     })
 
     if (!sent) {
       console.error('Cannot send force_repair: WebSocket not connected')
       return false
     }
-    
+
     return true
   }
 
   /**
-   * Exporte le rapport de run complet
+   * Exporte le rapport de run complet (active run)
    */
   function exportRunReport() {
-    if (!currentRun.value) return null
+    const runId = activeRunId.value
+    if (!runId) return null
+
+    const run = runs.value.get(runId)
+    if (!run) return null
 
     const report = {
-      run_id: currentRun.value.id,
+      run_id: run.id,
       timestamp: new Date().toISOString(),
-      duration_ms: currentRun.value.duration,
-      model: currentRun.value.model,
-      workflow_phase: currentRun.value.workflowPhase,
-      phases: currentRun.value.phaseHistory,
-      tools_used: currentRun.value.toolCalls.map(t => ({
+      duration_ms: run.duration,
+      status: run.status,
+      workflow_phase: run.workflowPhase,
+      phases: run.phaseHistory,
+      tools_used: run.toolCalls.map((t) => ({
         tool: t.tool,
         params: t.params,
-        iteration: t.iteration
+        iteration: t.iteration,
       })),
-      verification: currentRun.value.verification,
-      verification_items: currentRun.value.verificationItems,
-      verdict: currentRun.value.verdict,
-      repair_cycles: currentRun.value.repairCycles,
-      error: currentRun.value.error
+      verification: run.verification,
+      verdict: run.verdict,
+      repair_cycles: run.repairCycles,
+      error: run.error,
     }
 
     return JSON.stringify(report, null, 2)
   }
-  
+
+
+  /**
+   * v8: Rehydrate runs after WebSocket reconnection
+   * 
+   * This function handles the case where the WebSocket disconnects and reconnects.
+   * It marks any "stuck" running runs as failed and cleans up orphan events.
+   * 
+   * @param {string} [reason='reconnect'] - Reason for rehydration
+   */
+  function rehydrateRuns(reason = 'reconnect') {
+    console.log(`[Rehydrate] Starting rehydration (reason: ${reason})`)
+    
+    const now = Date.now()
+    const STALE_THRESHOLD = 120000 // 2 minutes
+    
+    let staleCount = 0
+    let cleanedOrphans = 0
+    
+    // Check all running runs
+    for (const [runId, run] of runs.value.entries()) {
+      if (run.status === RunStatus.RUNNING) {
+        const elapsed = now - run.lastEventTime
+        
+        if (elapsed > STALE_THRESHOLD) {
+          // Mark as failed due to disconnect
+          console.warn(`[Rehydrate] Run ${runId} stale (${Math.round(elapsed/1000)}s since last event) → marking FAILED`)
+          markRunFailed(runId, `Connection lost: no events for ${Math.round(elapsed/1000)}s`)
+          staleCount++
+        } else {
+          // Still potentially active - update lastEventTime to give it grace period
+          console.log(`[Rehydrate] Run ${runId} still active, granting grace period`)
+          run.lastEventTime = now
+        }
+      }
+    }
+    
+    // Clear orphan events older than threshold
+    const originalOrphanCount = orphanEvents.value.length
+    orphanEvents.value = orphanEvents.value.filter(event => {
+      const age = now - event.receivedAt
+      return age < STALE_THRESHOLD
+    })
+    cleanedOrphans = originalOrphanCount - orphanEvents.value.length
+    
+    console.log(`[Rehydrate] Complete: ${staleCount} runs failed, ${cleanedOrphans} orphan events cleaned`)
+    
+    return { staleCount, cleanedOrphans }
+  }
+
+  /**
+   * v8: Get run state summary for debugging
+   */
+  function getRunsSummary() {
+    const summary = {
+      total: runs.value.size,
+      byStatus: {
+        running: 0,
+        complete: 0,
+        failed: 0,
+        pending: 0,
+      },
+      orphanEvents: orphanEvents.value.length,
+      activeRunId: activeRunId.value,
+    }
+    
+    for (const run of runs.value.values()) {
+      if (summary.byStatus[run.status] !== undefined) {
+        summary.byStatus[run.status]++
+      }
+    }
+    
+    return summary
+  }
+
+  // Computed: WebSocket connection status
+  const isConnected = computed(() => wsState.value === 'connected')
+
   // Watch model changes
   watch(currentModel, (newModel) => {
     localStorage.setItem('preferredModel', newModel)
   })
-  
+
   return {
     // State
     conversations,
@@ -591,14 +1149,25 @@ export const useChatStore = defineStore('chat', () => {
     searchQuery,
     filteredConversations,
     messages,
-    isLoading,
     currentModel,
     availableModels,
-    currentRun,
-    runHistory,
+    modelsData,
+    modelsByCategory,
     wsState,
+    wsDiagnostics,
+    isConnected,
     settings,
-    
+    // Multi-run state (Phase 2)
+    runs,
+    activeRunId,
+    pendingMessages,
+    runsByConversation,
+    runHistory,
+    orphanEvents,
+    watchdogConfig,
+    rehydrateRuns,
+    getRunsSummary,
+
     // Methods
     initWebSocket,
     fetchConversations,
@@ -613,11 +1182,18 @@ export const useChatStore = defineStore('chat', () => {
     newConversation,
     updateSettings,
     exportConversation,
+    // Run management (Phase 2)
+    createRun,
+    getOrCreateRun,
+    markRunComplete,
+    markRunFailed,
+    cleanupOldRuns,
+    stopAllWatchdogs,
     // Actions workflow
     rerunVerification,
     forceRepair,
     exportRunReport,
     // Constantes
-    WORKFLOW_PHASES
+    WORKFLOW_PHASES,
   }
 })
