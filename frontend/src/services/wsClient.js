@@ -3,6 +3,8 @@
  * v6.2 - Support Re-verify, Force Repair, Models
  */
 
+import { normalizeEvent } from './ws/normalizeEvent'
+
 export class WSClient {
   constructor(options = {}) {
     this.ws = null
@@ -10,49 +12,64 @@ export class WSClient {
     this.maxReconnectAttempts = options.maxReconnectAttempts || 10
     this.reconnectDelay = options.reconnectDelay || 1000
     this.maxReconnectDelay = options.maxReconnectDelay || 30000
-    this.tokenBuffer = ''
-    this.tokenBufferTimeout = null
+    this.tokenBuffers = new Map()
+    this.tokenBufferTimers = new Map()
+    this.tokenBufferMeta = new Map()
     this.tokenBufferDelay = options.tokenBufferDelay || 50
     this.listeners = new Map()
     this.state = 'disconnected' // disconnected, connecting, connected, reconnecting
     this.pendingMessages = []
+    this.lastCloseEvent = null
   }
-  
+
+  getDiagnostics() {
+    return {
+      url: this.getUrl(),
+      state: this.state,
+      reconnectAttempts: this.reconnectAttempts,
+      lastCloseCode: this.lastCloseEvent?.code || null,
+      lastCloseReason: this.lastCloseEvent?.reason || null,
+      tokenPresent: !!sessionStorage.getItem('token')
+    }
+  }
+
   getUrl() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const token = localStorage.getItem('token')
     let url = `${protocol}//${window.location.host}/api/v1/chat/ws`
-    if (token) {
-      url += `?token=${token}`
-    }
     return url
   }
-  
+
   connect() {
-    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
       return
     }
-    
+
     this.state = this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting'
     this.emit('stateChange', this.state)
-    
+
     try {
-      this.ws = new WebSocket(this.getUrl())
-      
+      // SECURITY: Pass JWT via Sec-WebSocket-Protocol instead of query string
+      const token = sessionStorage.getItem('token')
+      const protocols = token ? [`Bearer.${token}`] : []
+
+      this.ws = new WebSocket(this.getUrl(), protocols)
+
       this.ws.onopen = () => {
-        console.log('🔌 WebSocket connected')
         this.state = 'connected'
         this.reconnectAttempts = 0
         this.emit('stateChange', this.state)
         this.emit('connected')
-        
+
         // Send pending messages
         while (this.pendingMessages.length > 0) {
           const msg = this.pendingMessages.shift()
           this.send(msg)
         }
       }
-      
+
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
@@ -61,18 +78,28 @@ export class WSClient {
           console.error('Failed to parse WS message:', e)
         }
       }
-      
+
       this.ws.onerror = (error) => {
         console.error('WebSocket error:', error)
         this.emit('error', error)
       }
-      
+
       this.ws.onclose = (event) => {
         console.log('🔌 WebSocket closed:', event.code, event.reason)
+        // CRQ-2026-0203-001: Log connection drops during active runs
+        if (event.code !== 1000) {
+          console.warn('⚠️ WebSocket closed unexpectedly:', {
+            code: event.code,
+            reason: event.reason || 'No reason provided',
+            wasClean: event.wasClean
+          })
+          console.warn('⚠️ This may cause terminal events to be lost for active runs')
+        }
+        this.lastCloseEvent = event
         this.state = 'disconnected'
         this.emit('stateChange', this.state)
         this.emit('disconnected', event)
-        
+
         // Auto-reconnect if not intentional close
         if (event.code !== 1000) {
           this.scheduleReconnect()
@@ -83,99 +110,104 @@ export class WSClient {
       this.scheduleReconnect()
     }
   }
-  
+
   scheduleReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('Max reconnect attempts reached')
       this.emit('maxReconnectReached')
       return
     }
-    
+
     const delay = Math.min(
       this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
       this.maxReconnectDelay
     )
-    
+
     this.reconnectAttempts++
     console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`)
-    
+
     setTimeout(() => this.connect(), delay)
   }
-  
+
   handleMessage(data) {
-    // Extraire run_id si présent
-    const runId = data.run_id || null
+    if (data?.type === 'models') {
+      this.emit('models', data.data)
+      return
+    }
 
-    switch (data.type) {
-      case 'token':
-        // Buffer tokens to reduce re-renders
-        this.tokenBuffer += data.data
-        if (!this.tokenBufferTimeout) {
-          this.tokenBufferTimeout = setTimeout(() => {
-            this.emit('tokens', this.tokenBuffer)
-            this.tokenBuffer = ''
-            this.tokenBufferTimeout = null
-          }, this.tokenBufferDelay)
-        }
-        break
+    const normalized = normalizeEvent(data)
+    if (!normalized) {
+      console.log('Unknown WS message type:', data?.type)
+      this.emit('message', data)
+      return
+    }
 
-      case 'thinking':
-        this.emit('thinking', data.data, runId)
-        break
+    if (normalized.type === 'thinking' && normalized.data?.kind === 'token') {
+      this._bufferTokenEvent(normalized)
+      return
+    }
 
-      case 'phase':
-        // Changement de phase workflow
-        this.emit('phase', data.data, runId)
-        break
+    if (
+      (normalized.type === 'complete' || normalized.type === 'error') &&
+      normalized.run_id
+    ) {
+      this._flushTokenBuffer(normalized.run_id)
+    }
 
-      case 'verification_item':
-        // Item de vérification QA
-        this.emit('verificationItem', data.data, runId)
-        break
+    this.emit('event', normalized)
+  }
 
-      // === NOUVEAUX ÉVÉNEMENTS v6.2 ===
-      case 'verification_complete':
-        // Résultat de re-vérification (rerun_verify action)
-        this.emit('verification_complete', data.data, runId)
-        break
+  _bufferTokenEvent(event) {
+    const runId = event.run_id
+    if (!runId) {
+      this.emit('event', event)
+      return
+    }
 
-      case 'models':
-        // Liste des modèles (get_models action)
-        this.emit('models', data.data)
-        break
-      // === FIN NOUVEAUX ÉVÉNEMENTS ===
+    const current = this.tokenBuffers.get(runId) || ''
+    const next = current + (event.data?.content || '')
+    this.tokenBuffers.set(runId, next)
+    this.tokenBufferMeta.set(runId, {
+      timestamp: event.timestamp,
+      iteration: event.data?.iteration,
+    })
 
-      case 'tool':
-        this.emit('tool', data.data, runId)
-        break
-
-      case 'complete':
-        // Flush any remaining tokens
-        if (this.tokenBuffer) {
-          this.emit('tokens', this.tokenBuffer)
-          this.tokenBuffer = ''
-        }
-        if (this.tokenBufferTimeout) {
-          clearTimeout(this.tokenBufferTimeout)
-          this.tokenBufferTimeout = null
-        }
-        this.emit('complete', data.data, runId)
-        break
-
-      case 'error':
-        this.emit('error', data.data, runId)
-        break
-
-      case 'conversation_created':
-        this.emit('conversationCreated', data.data)
-        break
-
-      default:
-        console.log('Unknown WS message type:', data.type)
-        this.emit('message', data)
+    if (!this.tokenBufferTimers.has(runId)) {
+      const timer = setTimeout(() => this._flushTokenBuffer(runId), this.tokenBufferDelay)
+      this.tokenBufferTimers.set(runId, timer)
     }
   }
-  
+
+  _flushTokenBuffer(runId) {
+    const buffered = this.tokenBuffers.get(runId)
+    if (!buffered) {
+      this._clearTokenTimer(runId)
+      return
+    }
+
+    const meta = this.tokenBufferMeta.get(runId) || {}
+    this.emit('event', {
+      type: 'thinking',
+      timestamp: meta.timestamp || new Date().toISOString(),
+      run_id: runId,
+      data: {
+        kind: 'token',
+        content: buffered,
+        iteration: meta.iteration,
+      },
+    })
+
+    this.tokenBuffers.delete(runId)
+    this.tokenBufferMeta.delete(runId)
+    this._clearTokenTimer(runId)
+  }
+
+  _clearTokenTimer(runId) {
+    const timer = this.tokenBufferTimers.get(runId)
+    if (timer) clearTimeout(timer)
+    this.tokenBufferTimers.delete(runId)
+  }
+
   send(data) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data))
@@ -190,15 +222,15 @@ export class WSClient {
       return false
     }
   }
-  
+
   sendMessage(message, conversationId, model) {
     return this.send({
       message,
       conversation_id: conversationId,
-      model
+      model,
     })
   }
-  
+
   disconnect() {
     if (this.ws) {
       this.ws.close(1000, 'User disconnect')
@@ -207,7 +239,7 @@ export class WSClient {
     this.state = 'disconnected'
     this.reconnectAttempts = this.maxReconnectAttempts // Prevent auto-reconnect
   }
-  
+
   // Event emitter methods
   on(event, callback) {
     if (!this.listeners.has(event)) {
@@ -216,7 +248,7 @@ export class WSClient {
     this.listeners.get(event).push(callback)
     return () => this.off(event, callback)
   }
-  
+
   off(event, callback) {
     if (!this.listeners.has(event)) return
     const callbacks = this.listeners.get(event)
@@ -225,10 +257,10 @@ export class WSClient {
       callbacks.splice(index, 1)
     }
   }
-  
+
   emit(event, ...args) {
     if (!this.listeners.has(event)) return
-    this.listeners.get(event).forEach(cb => {
+    this.listeners.get(event).forEach((cb) => {
       try {
         cb(...args)
       } catch (e) {
@@ -236,7 +268,7 @@ export class WSClient {
       }
     })
   }
-  
+
   get isConnected() {
     return this.ws && this.ws.readyState === WebSocket.OPEN
   }

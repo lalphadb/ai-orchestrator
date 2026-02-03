@@ -98,7 +98,7 @@ export const useChatStore = defineStore('chat', () => {
     })
     
     // v8: Initialize phase timestamp for starting
-    run.phaseTimestamps.starting = run.startTime
+    run.phaseTimestamps.starting = new Date(run.startedAt).getTime()
 
     runs.value.set(runId, run)
 
@@ -135,9 +135,12 @@ export const useChatStore = defineStore('chat', () => {
       : currentConversation.value?.id || null
 
     // Check pending messages for matching conversation
+    // V8 FIX: For new conversations, pending.conversationId may be null, so match on:
+    //   1. Exact conversation match (pending.conversationId === convId)
+    //   2. OR pending has no conversation (new conversation case)
     if (convId) {
       for (const pending of pendingMessages.value.values()) {
-        if (!pending.runId && pending.conversationId === convId) {
+        if (!pending.runId && (pending.conversationId === convId || !pending.conversationId)) {
           pending.runId = runId
           pending.userMsg.run_id = runId
           pending.assistantMsg.run_id = runId
@@ -162,18 +165,31 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    // 🔍 DEBUG: Log incoming data
+    console.log('[DEBUG] markRunComplete called:', {
+      runId,
+      dataKeys: Object.keys(data),
+      hasResponse: !!data.response,
+      responseLength: data.response?.length || 0,
+      response: data.response,
+      runTokens: run.tokens,
+      assistantMessageId: run.assistantMessageId
+    })
+
     // v8: Use setTerminal helper
+    const finalResponse = data.response || data.content || run.tokens
+    const runDuration = run.endedAt ? new Date(run.endedAt).getTime() - new Date(run.startedAt).getTime() : null
     setTerminal(run, 'complete', {
-      response: data.response || data.content || run.tokens,
+      response: finalResponse,
       tools_used: data.tools_used || [],
       iterations: data.iterations,
-      duration_ms: data.duration_ms || run.duration,
+      duration_ms: data.duration_ms || runDuration,
       verification: data.verification,
       verdict: data.verdict
     })
 
     run.workflowPhase = WorkflowPhase.COMPLETE
-    // Note: run.status, run.endTime, run.duration are handled by setTerminal (getters)
+    // Note: run.status, endedAt, duration are handled by setTerminal
     run.verification = data.verification
     run.verdict = data.verdict
     run.currentPhase = WorkflowPhase.COMPLETE
@@ -187,16 +203,36 @@ export const useChatStore = defineStore('chat', () => {
 
     // Update associated message
     const msg = messages.value.find((m) => m.id === run.assistantMessageId)
+
+    // 🔍 DEBUG: Log message update
+    console.log('[DEBUG] Message update:', {
+      messageFound: !!msg,
+      messageId: msg?.id,
+      currentContent: msg?.content,
+      newContent: finalResponse,
+      willUpdate: !!msg && !!finalResponse
+    })
+
     if (msg) {
       msg.streaming = false
-      msg.content = data.response || data.content || run.tokens
+      msg.content = finalResponse
       msg.tools_used = data.tools_used || []
       msg.iterations = data.iterations
-      msg.duration_ms = data.duration_ms || run.duration
+      const msgDuration = run.endedAt ? new Date(run.endedAt).getTime() - new Date(run.startedAt).getTime() : null
+      msg.duration_ms = data.duration_ms || msgDuration
       msg.model = data.model_used || data.model
       msg.verification = data.verification
       msg.verdict = data.verdict
       msg.finalized_at = Date.now()
+
+      // 🔍 DEBUG: Confirm update
+      console.log('[DEBUG] Message updated successfully:', {
+        msgId: msg.id,
+        contentLength: msg.content?.length || 0
+      })
+    } else {
+      console.error('[DEBUG] ❌ Message NOT FOUND for assistantMessageId:', run.assistantMessageId)
+      console.error('[DEBUG] Available messages:', messages.value.map(m => ({ id: m.id, role: m.role })))
     }
 
     // Archive run
@@ -224,7 +260,7 @@ export const useChatStore = defineStore('chat', () => {
     })
 
     run.workflowPhase = WorkflowPhase.COMPLETE
-    // Note: run.status, run.endTime, run.duration are handled by setTerminal (getters)
+    // Note: run.status, endedAt are handled by setTerminal
     run.error = errorMsg
     run.currentPhase = 'error'
 
@@ -252,11 +288,64 @@ export const useChatStore = defineStore('chat', () => {
 
     for (const runId of Array.from(runIds)) {
       const run = runs.value.get(runId)
-      if (run && run.status !== RunStatus.RUNNING && run.endTime && now - run.endTime > CLEANUP_THRESHOLD) {
+      const endTime = run?.endedAt ? new Date(run.endedAt).getTime() : null
+      if (run && run.status !== RunStatus.RUNNING && endTime && now - endTime > CLEANUP_THRESHOLD) {
         runs.value.delete(runId)
         runIds.delete(runId)
         console.log(`[Run Registry] Cleaned up old run ${runId}`)
       }
+    }
+  }
+
+  /**
+   * Cleanup global: purge terminées > 5min, limite Map à 100 runs (CRQ-P0-5)
+   * Appelé automatiquement toutes les 60s
+   */
+  function cleanupGlobalRuns() {
+    const now = Date.now()
+    const RETENTION_MS = 5 * 60 * 1000  // 5 minutes
+    const MAX_RUNS = 100
+
+    // 1. Purger runs terminées > 5min
+    let purged = 0
+    for (const [runId, run] of runs.value.entries()) {
+      if (run.terminal && run.endedAt) {
+        const elapsed = now - new Date(run.endedAt).getTime()
+        if (elapsed > RETENTION_MS) {
+          runs.value.delete(runId)
+          // Aussi supprimer de runsByConversation
+          if (run.conversationId) {
+            const convRuns = runsByConversation.value.get(run.conversationId)
+            convRuns?.delete(runId)
+          }
+          purged++
+        }
+      }
+    }
+
+    // 2. Si encore > MAX_RUNS, purger plus anciennes
+    if (runs.value.size > MAX_RUNS) {
+      const sorted = Array.from(runs.value.entries())
+        .sort((a, b) => new Date(a[1].startedAt) - new Date(b[1].startedAt))
+
+      const toDelete = sorted.slice(0, runs.value.size - MAX_RUNS)
+      toDelete.forEach(([runId, run]) => {
+        runs.value.delete(runId)
+        if (run.conversationId) {
+          const convRuns = runsByConversation.value.get(run.conversationId)
+          convRuns?.delete(runId)
+        }
+        purged++
+      })
+    }
+
+    // 3. Purger orphanEvents > 100
+    if (orphanEvents.value.length > 100) {
+      orphanEvents.value = orphanEvents.value.slice(-100)
+    }
+
+    if (purged > 0) {
+      console.log(`[Cleanup] Purged ${purged} old runs (total: ${runs.value.size})`)
     }
   }
 
@@ -346,7 +435,6 @@ export const useChatStore = defineStore('chat', () => {
           const run = getOrCreateRun(resolvedRunId, event)
           run.tokens += data.content || ''
           run.currentPhase = 'streaming'
-          run.lastEventTime = Date.now()
           run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
 
           // Update watchdog heartbeat
@@ -367,12 +455,17 @@ export const useChatStore = defineStore('chat', () => {
           phase: data.phase,
           timestamp: Date.now(),
         })
+
+        // CRQ-2026-0203-001 Phase 5: Validate phase before setting workflowPhase
         if (data.phase) {
+          if (!WORKFLOW_PHASES.includes(data.phase)) {
+            console.warn('[Chat] Invalid phase in thinking event:', data.phase, 'Valid phases:', WORKFLOW_PHASES)
+          }
           run.workflowPhase = data.phase
         }
+
         run.currentPhase = 'thinking'
         run.currentIteration = data.iteration
-        run.lastEventTime = Date.now()
         run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
 
         // Update watchdog heartbeat
@@ -383,14 +476,27 @@ export const useChatStore = defineStore('chat', () => {
       case 'phase': {
         const run = getOrCreateRun(resolvedRunId, event)
         const now = Date.now()
+
+        // CRQ-2026-0203-001 Phase 5: Validate phase before setting
+        if (!data.phase) {
+          console.warn('[Chat] phase event missing data.phase:', event)
+          break
+        }
+
+        if (!WORKFLOW_PHASES.includes(data.phase)) {
+          console.warn('[Chat] Invalid phase received:', data.phase, 'Valid phases:', WORKFLOW_PHASES)
+          // Don't break - still update with invalid phase to allow debugging
+        }
+
         run.workflowPhase = data.phase
 
         // v8: Update phase status and timestamps
+        // CRQ-2026-0203-001: updatePhaseStatus already adds to phaseHistory, so don't duplicate
         if (data.status) {
-          updatePhaseStatus(run, data.phase, data.status)
+          updatePhaseStatus(run, data.phase, data.status, { message: data.message })
         } else {
           // Default to running if no status provided
-          updatePhaseStatus(run, data.phase, PhaseStatus.RUNNING)
+          updatePhaseStatus(run, data.phase, PhaseStatus.RUNNING, { message: data.message })
         }
 
         // Legacy: Record phase timestamp
@@ -398,14 +504,8 @@ export const useChatStore = defineStore('chat', () => {
           run.phaseTimestamps[data.phase] = now
         }
 
-        run.phaseHistory.push({
-          phase: data.phase,
-          status: data.status,
-          message: data.message,
-          timestamp: now,
-        })
+        // Note: phaseHistory is updated by updatePhaseStatus() - no manual push needed
         run.currentPhase = data.phase
-        run.lastEventTime = now
         run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
 
         // Update watchdog heartbeat
@@ -432,7 +532,6 @@ export const useChatStore = defineStore('chat', () => {
         } else {
           run.verification.push(item)
         }
-        run.lastEventTime = Date.now()
         run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
 
         // Update watchdog heartbeat
@@ -451,7 +550,6 @@ export const useChatStore = defineStore('chat', () => {
         })
         run.currentPhase = 'tool'
         run.currentTool = data.tool
-        run.lastEventTime = Date.now()
         run.lastEventAt = new Date().toISOString() // V8: Update ISO timestamp
 
         // Update watchdog heartbeat
@@ -460,6 +558,15 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       case 'complete': {
+        // 🔍 DEBUG: Log complete event
+        console.log('[DEBUG] Complete event received:', {
+          runId: resolvedRunId,
+          dataKeys: Object.keys(data),
+          hasResponse: !!data.response,
+          responsePreview: data.response?.substring(0, 100),
+          eventData: data
+        })
+
         const run = getOrCreateRun(resolvedRunId, event)
         run.terminal = true // V8: Mark as terminal
         markRunComplete(resolvedRunId, data)
@@ -493,21 +600,24 @@ export const useChatStore = defineStore('chat', () => {
 
         let run = runs.value.get(resolvedRunId)
 
-        if (run && run.isPlaceholder) {
-          run.conversationId = convId
-          run.isPlaceholder = false
+        const isPlaceholder = run && run.status === RunStatus.PENDING && !run.terminal
+        if (run && isPlaceholder) {
+          run.conversation_id = convId
+          run.status = RunStatus.RUNNING
 
           if (!runsByConversation.value.has(convId)) {
             runsByConversation.value.set(convId, new Set())
           }
           runsByConversation.value.get(convId).add(resolvedRunId)
         } else if (!run) {
+          // V8 FIX: For new conversations, pending.conversationId may be null
           const pending = Array.from(pendingMessages.value.values()).find(
-            (p) => !p.runId && p.conversationId === convId
+            (p) => !p.runId && (p.conversationId === convId || !p.conversationId)
           )
 
           if (pending) {
             pending.runId = resolvedRunId
+            pending.conversationId = convId  // Update with backend's conversation_id
             createRun(resolvedRunId, convId, pending.userMsg, pending.assistantMsg)
             pendingMessages.value.delete(pending.tempId)
           } else {
@@ -584,18 +694,27 @@ export const useChatStore = defineStore('chat', () => {
       if (hasWatchdogTimeout(currentRun)) {
         const elapsed = Date.now() - new Date(currentRun.watchdog.lastHeartbeatAt).getTime()
         console.error(`[Watchdog] Run ${runId} timeout after ${elapsed}ms in phase ${currentRun.workflowPhase}`)
-        
+        console.error(`[Watchdog] CRQ-2026-0203-001: Terminal event never received. WebSocket state: ${wsState.value}`)
+        console.error(`[Watchdog] Run details:`, {
+          runId,
+          status: currentRun.status,
+          terminal: currentRun.terminal,
+          lastEventAt: currentRun.lastEventAt,
+          currentPhase: currentRun.currentPhase,
+          timeoutMs: currentRun.watchdog.timeoutMs
+        })
+
         // Fail the run
         failRunByWatchdog(currentRun, `Timeout: no events for ${Math.round(elapsed / 1000)}s in phase ${currentRun.workflowPhase}`)
-        
+
         // Update UI
         const msg = messages.value.find((m) => m.id === currentRun.assistantMessageId)
         if (msg) {
           msg.streaming = false
-          msg.content = `❌ Timeout: Run stalled for ${Math.round(elapsed / 1000)} seconds`
+          msg.content = `❌ Timeout: Run stalled for ${Math.round(elapsed / 1000)} seconds. Terminal event never received from backend.`
           msg.isError = true
         }
-        
+
         // Clean up timer
         clearWatchdogTimer(currentRun)
         return
@@ -820,9 +939,9 @@ export const useChatStore = defineStore('chat', () => {
         // Create run with backend's run_id
         const run = createRun(backendRunId, data.conversation_id, pending.userMsg, pending.assistantMsg)
 
-        // Populate toolCalls from tools_used
+        // Populate tools from tools_used
         if (data.tools_used) {
-          run.toolCalls = data.tools_used.map((tool, i) => ({
+          run.tools = data.tools_used.map((tool, i) => ({
             tool: typeof tool === 'string' ? tool : tool.tool,
             params: tool.params || {},
             iteration: i,
@@ -1038,14 +1157,15 @@ export const useChatStore = defineStore('chat', () => {
     const run = runs.value.get(runId)
     if (!run) return null
 
+    const runDuration = run.endedAt ? new Date(run.endedAt).getTime() - new Date(run.startedAt).getTime() : null
     const report = {
-      run_id: run.id,
+      run_id: run.run_id,
       timestamp: new Date().toISOString(),
-      duration_ms: run.duration,
+      duration_ms: runDuration,
       status: run.status,
       workflow_phase: run.workflowPhase,
       phases: run.phaseHistory,
-      tools_used: run.toolCalls.map((t) => ({
+      tools_used: run.tools.map((t) => ({
         tool: t.tool,
         params: t.params,
         iteration: t.iteration,
@@ -1080,7 +1200,7 @@ export const useChatStore = defineStore('chat', () => {
     // Check all running runs
     for (const [runId, run] of runs.value.entries()) {
       if (run.status === RunStatus.RUNNING) {
-        const elapsed = now - run.lastEventTime
+        const elapsed = now - new Date(run.lastEventAt).getTime()
         
         if (elapsed > STALE_THRESHOLD) {
           // Mark as failed due to disconnect
@@ -1088,9 +1208,9 @@ export const useChatStore = defineStore('chat', () => {
           markRunFailed(runId, `Connection lost: no events for ${Math.round(elapsed/1000)}s`)
           staleCount++
         } else {
-          // Still potentially active - update lastEventTime to give it grace period
+          // Still potentially active - update lastEventAt to give it grace period
           console.log(`[Rehydrate] Run ${runId} still active, granting grace period`)
-          run.lastEventTime = now
+          run.lastEventAt = new Date(now).toISOString()
         }
       }
     }
@@ -1147,6 +1267,10 @@ export const useChatStore = defineStore('chat', () => {
   watch(currentModel, (newModel) => {
     localStorage.setItem('preferredModel', newModel)
   })
+
+  // CRQ-P0-5: Cleanup automatique toutes les 60s (memory leak prevention)
+  setInterval(cleanupGlobalRuns, 60000)
+  console.log('[Cleanup] Interval configuré (60s)')
 
   return {
     // State

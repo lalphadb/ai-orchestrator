@@ -56,25 +56,44 @@
       
       <!-- Status -->
       <div class="p-4 border-t border-gray-800">
+        <!-- CRQ-2026-0203-001: Session expiring warning -->
+        <div v-if="auth.sessionExpiring" class="mb-3 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded text-xs">
+          <div class="flex items-center gap-2 text-yellow-400 mb-1">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+            <span class="font-semibold">Session expirée</span>
+          </div>
+          <button
+            @click="auth.refreshSession()"
+            class="w-full px-2 py-1 bg-yellow-500/20 hover:bg-yellow-500/30 rounded text-yellow-300 transition text-xs font-medium"
+          >
+            Rafraîchir la session
+          </button>
+        </div>
+
         <div class="flex items-center gap-2 text-sm">
-          <div 
-            class="w-2 h-2 rounded-full"
-            :class="wsConnected ? 'bg-green-400' : 'bg-red-400'"
+          <div
+            class="w-2 h-2 rounded-full transition-colors"
+            :class="wsStatusClass"
           ></div>
-          <span class="text-gray-400">{{ wsConnected ? 'Connecté' : 'Déconnecté' }}</span>
+          <span class="text-gray-400">{{ wsStatusText }}</span>
+        </div>
+        <div v-if="auth.user" class="mt-2 text-xs text-gray-500 truncate">
+          {{ auth.user.username || auth.user }}
         </div>
       </div>
     </aside>
     
     <!-- Main Content -->
-    <main class="flex-1 overflow-hidden">
+    <main class="flex-1">
       <router-view />
     </main>
   </div>
 </template>
 
 <script setup>
-import { computed, h } from 'vue'
+import { computed, h, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useChatStore } from '@/stores/chat'
 import { useAuthStore } from '@/stores/auth'
@@ -83,7 +102,37 @@ const route = useRoute()
 const chat = useChatStore()
 const auth = useAuthStore()
 
-const wsConnected = computed(() => chat.wsState === 'connected' && auth.isAuthenticated)
+// ===== FIX: Initialize WebSocket at layout level =====
+// Previously only ChatView called initWebSocket(), causing 
+// "Disconnected" status on all other pages.
+onMounted(() => {
+  if (auth.isAuthenticated) {
+    chat.initWebSocket()
+  }
+})
+
+// Also connect when auth state changes (e.g. after login redirect)
+watch(() => auth.isAuthenticated, (isAuth) => {
+  if (isAuth) {
+    chat.initWebSocket()
+  }
+})
+
+const wsStatusClass = computed(() => {
+  switch (chat.wsState) {
+    case 'connected': return 'bg-green-400'
+    case 'connecting': return 'bg-yellow-400 animate-pulse'
+    default: return 'bg-red-400'
+  }
+})
+
+const wsStatusText = computed(() => {
+  switch (chat.wsState) {
+    case 'connected': return 'Connecté'
+    case 'connecting': return 'Connexion...'
+    default: return 'Déconnecté'
+  }
+})
 
 // Icon components (inline SVG)
 const DashboardIcon = { render: () => h('svg', { fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
