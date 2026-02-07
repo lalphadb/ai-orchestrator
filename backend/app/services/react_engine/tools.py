@@ -2249,12 +2249,3 @@ def _extract_text_from_html(html: str) -> str:
     html = re.sub(r"\s+", " ", html)
 
     return html.strip()
-
-
-# Register web search tools
-BUILTIN_TOOLS.register(
-    "web_search", web_search, "Recherche web sécurisée via DuckDuckGo", "network"
-)
-BUILTIN_TOOLS.register(
-    "web_read", web_read, "Lecture sécurisée du contenu d'une page web", "network"
-)

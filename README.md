@@ -5,7 +5,7 @@ Autonomous AI orchestration platform with workflow engine, modular agents, and r
 ## Features
 
 - **Workflow Engine** - Phased execution: SPEC, PLAN, EXECUTE, VERIFY, REPAIR
-- **32 Built-in Tools** - Filesystem, network, QA, git, memory, web search, governance
+- **30 Built-in Tools** - Filesystem, network, QA, git, memory, web search, governance
 - **6 Agents** - Modular agents with tool isolation and capability filtering
 - **Real-time WebSocket** - Normalized events with run tracking and watchdog
 - **Learning System** - ChromaDB-powered memory with pattern detection and feedback
@@ -87,7 +87,7 @@ See [docs/](docs/) for detailed documentation:
 - [Architecture](docs/architecture.md) - System design and components
 - [API Reference](docs/api.md) - REST and WebSocket endpoints
 - [Security](docs/security.md) - Security model and protections
-- [Tools Reference](docs/tools.md) - All 32 tools with examples
+- [Tools Reference](docs/tools.md) - All 30 tools with examples
 - [Learning System](docs/learning.md) - ChromaDB memory and feedback
 - [Deployment](docs/deployment.md) - Production deployment with Traefik/nginx
 - [Observability](docs/observability.md) - Monitoring with Grafana/Prometheus/Loki

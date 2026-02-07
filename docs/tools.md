@@ -1,6 +1,6 @@
 # Tools Reference
 
-32 built-in tools organized by category. All tools return a standardized `ToolResult`:
+30 built-in tools organized by category. All tools return a standardized `ToolResult`:
 
 ```json
 {
@@ -43,11 +43,13 @@
 | `run_build` | Build backend deps or frontend assets |
 | `run_typecheck` | mypy (backend) or tsc (frontend) |
 
-## Network (1)
+## Network (3)
 
 | Tool | Description |
 |------|-------------|
 | `http_request` | HTTP GET/POST with SSRF protection |
+| `web_search` | Web search via DuckDuckGo |
+| `web_read` | Read and extract web page content |
 
 ## Utility (1)
 
@@ -55,7 +57,7 @@
 |------|-------------|
 | `calculate` | Safe math expression evaluation |
 
-## Governance (4)
+## Governance (3)
 
 | Tool | Description |
 |------|-------------|
@@ -78,13 +80,6 @@
 | `list_runbooks` | Available runbooks |
 | `get_runbook` | Get runbook content |
 | `search_runbooks` | Search runbooks by keyword |
-
-## Web (2)
-
-| Tool | Description |
-|------|-------------|
-| `web_search` | Web search via external API |
-| `web_read` | Read and extract web page content |
 
 ## Error Codes
 

@@ -39,7 +39,7 @@ app/
     ├── agents/       # base.py, registry.py (6 agents)
     ├── learning/     # context_enricher, evaluator, feedback, memory
     ├── ollama/       # client.py, categorizer.py
-    ├── react_engine/ # engine, tools (32), governance, secure_executor,
+    ├── react_engine/ # engine, tools (30), governance, secure_executor,
     │                 # verifier, workflow_engine, self_improve, memory,
     │                 # prompt_injection_detector, runbooks, learning_wrapper
     └── websocket/    # event_emitter.py, exceptions.py
