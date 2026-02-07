@@ -4,7 +4,7 @@ Pydantic schemas for request/response validation
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from pydantic import (BaseModel, ConfigDict, EmailStr, Field, ValidationError,
@@ -272,4 +272,4 @@ class WSMessage(BaseModel):
 
     type: str  # thinking, tool, chunk, complete, error
     data: Any
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
