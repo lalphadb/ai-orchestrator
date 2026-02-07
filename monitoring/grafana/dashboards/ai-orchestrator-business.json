@@ -1,0 +1,65 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "AI Orchestrator Business Metrics Dashboard",
+  "editable": true,
+  "id": null,
+  "title": "AI Orchestrator - Business Metrics",
+  "uid": "ai-orchestrator-business",
+  "version": 1,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Vue d'ensemble",
+      "type": "row"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 2,
+      "targets": [{ "expr": "ai_orchestrator_conversations_total", "refId": "A" }],
+      "title": "Conversations Totales",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 3,
+      "targets": [{ "expr": "ai_orchestrator_messages_total", "refId": "A" }],
+      "title": "Messages Totaux",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 4,
+      "targets": [{ "expr": "ai_orchestrator_runs_active", "refId": "A" }],
+      "title": "Runs Actifs",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 5,
+      "targets": [{ "expr": "ai_orchestrator_ollama_connected", "refId": "A" }],
+      "title": "Status Ollama",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timezone": "browser"
+}

@@ -1,0 +1,188 @@
+# Traefik v2 Static Configuration
+# Production-ready avec observabilité complète
+
+global:
+  checkNewVersion: true
+  sendAnonymousUsage: false
+
+# ============================================
+# API & DASHBOARD
+# ============================================
+api:
+  dashboard: true
+  insecure: false  # Dashboard sécurisé via Traefik
+
+# ============================================
+# ENTRYPOINTS
+# ============================================
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+        domains:
+          - main: "4lb.ca"
+            sans:
+              - "*.4lb.ca"
+
+  # Métriques Prometheus
+  metrics:
+    address: ":8082"
+
+# ============================================
+# PROVIDERS
+# ============================================
+providers:
+  # Docker auto-discovery
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: web
+    watch: true
+
+  # Configuration dynamique (fichiers)
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+# ============================================
+# CERTIFICATS SSL (Let's Encrypt)
+# ============================================
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@4lb.ca
+      storage: /letsencrypt/acme.json
+      # Production
+      caServer: "https://acme-v02.api.letsencrypt.org/directory"
+      # Staging (pour tests)
+      # caServer: "https://acme-staging-v02.api.letsencrypt.org/directory"
+
+      httpChallenge:
+        entryPoint: web
+
+      # Ou DNS challenge (Cloudflare example)
+      # dnsChallenge:
+      #   provider: cloudflare
+      #   delayBeforeCheck: 0
+
+# ============================================
+# LOGS - CRUCIAL POUR OBSERVABILITÉ
+# ============================================
+log:
+  level: INFO  # DEBUG, INFO, WARN, ERROR
+  filePath: /var/log/traefik/traefik.log
+  format: json
+  maxSize: 100  # MB
+  maxBackups: 3
+  maxAge: 7  # jours
+  compress: true
+
+# ACCESS LOGS - TOUTES LES REQUÊTES HTTP
+accessLog:
+  filePath: /var/log/traefik/access.log
+  format: json
+  bufferingSize: 100  # Buffer pour performance
+
+  filters:
+    statusCodes:
+      - "200-599"  # Tous les codes
+    retryAttempts: true
+    minDuration: 0
+
+  fields:
+    defaultMode: keep
+    names:
+      # Garder
+      ClientAddr: keep
+      ClientHost: keep
+      ClientPort: keep
+      ClientUsername: drop  # Pas utilisé
+      DownstreamStatus: keep
+      DownstreamContentSize: keep
+      Duration: keep
+      OriginDuration: keep
+      OriginStatus: keep
+      Overhead: keep
+      RequestAddr: keep
+      RequestHost: keep
+      RequestMethod: keep
+      RequestPath: keep
+      RequestPort: keep
+      RequestProtocol: keep
+      RequestScheme: keep
+      RetryAttempts: keep
+      RouterName: keep
+      ServiceAddr: keep
+      ServiceName: keep
+      ServiceURL: keep
+      StartUTC: keep
+      StartLocal: keep
+
+    headers:
+      defaultMode: keep
+      names:
+        # Garder certains headers
+        User-Agent: keep
+        Referer: keep
+        X-Request-Id: keep
+        X-Forwarded-For: keep
+
+        # Supprimer pour sécurité
+        Authorization: drop
+        Cookie: drop
+        Set-Cookie: drop
+
+# ============================================
+# MÉTRIQUES PROMETHEUS
+# ============================================
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    addServicesLabels: true
+    entryPoint: metrics
+
+    # Buckets pour histogrammes (en secondes)
+    buckets:
+      - 0.005   # 5ms
+      - 0.01    # 10ms
+      - 0.025   # 25ms
+      - 0.05    # 50ms
+      - 0.1     # 100ms
+      - 0.25    # 250ms
+      - 0.5     # 500ms
+      - 1.0     # 1s
+      - 2.5     # 2.5s
+      - 5.0     # 5s
+      - 10.0    # 10s
+
+    # Métriques personnalisées
+    manualRouting: false
+
+# ============================================
+# TRACING (optionnel - Jaeger/Zipkin)
+# ============================================
+# tracing:
+#   jaeger:
+#     samplingServerURL: http://jaeger:5778/sampling
+#     localAgentHostPort: jaeger:6831
+#     gen128Bit: true
+#     propagation: jaeger
+#     traceContextHeaderName: uber-trace-id
+
+# ============================================
+# PILOT (Traefik Cloud - optionnel)
+# ============================================
+# pilot:
+#   token: "xxxx"

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Simple - AI Orchestrator</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .info { color: #60a5fa; }
+        code { background: #333; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Test Simple - AI Orchestrator</h1>
+    <div id="app">
+        <h2>{{ message }}</h2>
+        <p class="success">✅ Vue fonctionne!</p>
+        <button @click="testBackend" style="padding: 10px 20px; cursor: pointer;">Test Backend</button>
+        <pre v-if="backendResponse" style="background: #333; padding: 10px; border-radius: 5px;">{{ backendResponse }}</pre>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    message: 'Vue.js est chargé correctement',
+                    backendResponse: null
+                }
+            },
+            methods: {
+                async testBackend() {
+                    try {
+                        const res = await fetch('/api/v1/system/health');
+                        this.backendResponse = await res.json();
+                    } catch (e) {
+                        this.backendResponse = 'Erreur: ' + e.message;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

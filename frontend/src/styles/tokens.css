@@ -1,0 +1,190 @@
+/* ===========================================
+   src/styles/tokens.css
+   AI ORCHESTRATOR - DESIGN TOKENS v2.0
+   =========================================== */
+
+:root {
+  /* ─────────────────────────────────────────
+     BACKGROUNDS - Profondeur et dimension
+     ───────────────────────────────────────── */
+
+  --bg-deep: linear-gradient(
+    135deg,
+    #0a0a12 0%,
+    #12101f 25%,
+    #1a1528 50%,
+    #12101f 75%,
+    #0a0a12 100%
+  );
+
+  --bg-surface: rgba(255, 255, 255, 0.03);
+  --bg-surface-hover: rgba(255, 255, 255, 0.06);
+  --bg-surface-active: rgba(255, 255, 255, 0.08);
+
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --bg-glass-border: rgba(255, 255, 255, 0.08);
+
+  --bg-sidebar: rgba(10, 10, 18, 0.95);
+  --bg-sidebar-item-hover: rgba(139, 92, 246, 0.1);
+  --bg-sidebar-item-active: rgba(139, 92, 246, 0.2);
+
+  /* ─────────────────────────────────────────
+     ACCENTS - Énergie et focus
+     ───────────────────────────────────────── */
+
+  --accent-primary: #8b5cf6;
+  --accent-primary-hover: #a78bfa;
+  --accent-primary-gradient: linear-gradient(
+    135deg,
+    #6366f1 0%,
+    #8b5cf6 50%,
+    #a855f7 100%
+  );
+
+  --accent-glow-soft: 0 0 20px rgba(139, 92, 246, 0.2);
+  --accent-glow-medium: 0 0 40px rgba(139, 92, 246, 0.3);
+  --accent-glow-strong: 0 0 60px rgba(139, 92, 246, 0.4);
+
+  --accent-secondary: #3b82f6;
+  --accent-secondary-gradient: linear-gradient(
+    135deg,
+    #2563eb 0%,
+    #3b82f6 100%
+  );
+
+  --accent-thinking: linear-gradient(
+    90deg,
+    #3b82f6 0%,
+    #8b5cf6 25%,
+    #ec4899 50%,
+    #8b5cf6 75%,
+    #3b82f6 100%
+  );
+
+  /* ─────────────────────────────────────────
+     SEMANTIC - États et feedback
+     ───────────────────────────────────────── */
+
+  --color-success: #10b981;
+  --color-success-bg: rgba(16, 185, 129, 0.1);
+  --color-success-glow: 0 0 20px rgba(16, 185, 129, 0.3);
+
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.1);
+
+  --color-error: #ef4444;
+  --color-error-bg: rgba(239, 68, 68, 0.1);
+  --color-error-glow: 0 0 20px rgba(239, 68, 68, 0.3);
+
+  --color-info: #06b6d4;
+  --color-info-bg: rgba(6, 182, 212, 0.1);
+
+  /* ─────────────────────────────────────────
+     TEXTE - Lisibilité et hiérarchie
+     ───────────────────────────────────────── */
+
+  --text-primary: #f8fafc;
+  --text-secondary: rgba(248, 250, 252, 0.7);
+  --text-tertiary: rgba(248, 250, 252, 0.5);
+  --text-muted: rgba(248, 250, 252, 0.35);
+  --text-on-accent: #ffffff;
+
+  --text-gradient: linear-gradient(
+    135deg,
+    #f8fafc 0%,
+    #a78bfa 100%
+  );
+
+  /* ─────────────────────────────────────────
+     BORDERS
+     ───────────────────────────────────────── */
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.15);
+  --border-accent: rgba(139, 92, 246, 0.3);
+
+  /* ─────────────────────────────────────────
+     SHADOWS
+     ───────────────────────────────────────── */
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.4);
+  --shadow-glow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    0 0 40px rgba(139, 92, 246, 0.1);
+
+  /* ─────────────────────────────────────────
+     SPACING (base 4px)
+     ───────────────────────────────────────── */
+
+  --space-0: 0;
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  --space-20: 5rem;     /* 80px */
+  --space-24: 6rem;     /* 96px */
+
+  /* ─────────────────────────────────────────
+     BORDER RADIUS
+     ───────────────────────────────────────── */
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+
+  /* ─────────────────────────────────────────
+     LAYOUT
+     ───────────────────────────────────────── */
+
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 72px;
+  --header-height: 64px;
+
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+
+  /* ─────────────────────────────────────────
+     Z-INDEX SCALE
+     ───────────────────────────────────────── */
+
+  --z-base: 0;
+  --z-dropdown: 1000;
+  --z-sticky: 1100;
+  --z-modal: 1200;
+  --z-toast: 1300;
+  --z-tooltip: 1400;
+
+  /* ─────────────────────────────────────────
+     TRANSITIONS
+     ───────────────────────────────────────── */
+
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* ─────────────────────────────────────────
+     BREAKPOINTS (pour JS)
+     ───────────────────────────────────────── */
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}

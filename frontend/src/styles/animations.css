@@ -1,0 +1,70 @@
+/* src/styles/animations.css */
+
+/* Page transitions */
+.page-enter-active,
+.page-leave-active {
+  transition: all var(--transition-normal);
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
+}
+
+/* Card stagger */
+.stagger-enter-active {
+  transition: all var(--transition-normal);
+}
+
+.stagger-enter-from {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+/* Thinking gradient */
+@keyframes thinking-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.thinking-animation {
+  background: var(--accent-thinking);
+  background-size: 200% 200%;
+  animation: thinking-gradient 3s ease infinite;
+}
+
+/* Glow pulse */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: var(--accent-glow-soft); }
+  50% { box-shadow: var(--accent-glow-strong); }
+}
+
+.glow-animation {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Float */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.float-animation {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Typing cursor */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}

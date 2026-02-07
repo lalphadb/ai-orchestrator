@@ -1,0 +1,131 @@
+apiVersion: 1
+
+# Provisioning de la structure de dossiers Grafana
+# Cette config crée automatiquement l'arborescence au démarrage
+
+providers:
+  # ============================================
+  # 1. OVERVIEW & HOME
+  # ============================================
+  - name: '1-overview'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/1-overview
+      foldersFromFilesStructure: false
+    folder: '📊 1. Overview & Home'
+    folderUid: overview-home
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 2. INFRASTRUCTURE
+  # ============================================
+  - name: '2-infrastructure'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/2-infrastructure
+      foldersFromFilesStructure: false
+    folder: '🏗️ 2. Infrastructure'
+    folderUid: infrastructure
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 3. DOCKER & CONTAINERS
+  # ============================================
+  - name: '3-docker'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/3-docker
+      foldersFromFilesStructure: false
+    folder: '🐳 3. Docker & Containers'
+    folderUid: docker-containers
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 4. NETWORKING & HTTP
+  # ============================================
+  - name: '4-networking'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/4-networking
+      foldersFromFilesStructure: false
+    folder: '🌐 4. Networking & HTTP'
+    folderUid: networking-http
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 5. AI-ORCHESTRATOR
+  # ============================================
+  - name: '5-ai-orchestrator'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/5-ai-orchestrator
+      foldersFromFilesStructure: false
+    folder: '🤖 5. AI-Orchestrator'
+    folderUid: ai-orchestrator
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 6. AI & ML STACK
+  # ============================================
+  - name: '6-ai-ml'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/6-ai-ml
+      foldersFromFilesStructure: false
+    folder: '🧠 6. AI & ML Stack'
+    folderUid: ai-ml-stack
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 7. OBSERVABILITY
+  # ============================================
+  - name: '7-observability'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/7-observability
+      foldersFromFilesStructure: false
+    folder: '📈 7. Observability'
+    folderUid: observability
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 8. ALERTING & INCIDENTS
+  # ============================================
+  - name: '8-alerting'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/8-alerting
+      foldersFromFilesStructure: false
+    folder: '⚠️ 8. Alerting & Incidents'
+    folderUid: alerting-incidents
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+
+  # ============================================
+  # 9. ADMIN & MAINTENANCE
+  # ============================================
+  - name: '9-admin'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/9-admin
+      foldersFromFilesStructure: false
+    folder: '🔧 9. Admin & Maintenance'
+    folderUid: admin-maintenance
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true

@@ -1,0 +1,16 @@
+apiVersion: 1
+
+# Provisioning pour les dashboards de logs
+# Ces dashboards seront chargés dans le dossier "Observability"
+
+providers:
+  - name: 'logs-dashboard'
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards/7-observability
+      foldersFromFilesStructure: false
+    folder: '📈 7. Observability'
+    folderUid: observability
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true

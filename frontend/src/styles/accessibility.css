@@ -1,0 +1,382 @@
+/**
+ * AI Orchestrator v8.1.0 — Accessibility (A11y)
+ * WCAG 2.1 Level AA compliance
+ */
+
+/* ========================================================================
+   FOCUS STATES - Enhanced visibility
+   ======================================================================== */
+
+/* Reset default focus */
+*:focus {
+  outline: none;
+}
+
+/* Enhanced focus-visible for keyboard navigation */
+*:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Special focus for interactive elements */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.2);
+}
+
+/* Focus for custom components */
+.glass-card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  box-shadow: var(--shadow-glow), 0 0 0 4px rgba(139, 92, 246, 0.2);
+}
+
+/* Focus for status orbs and interactive cards */
+.status-orb:focus-visible,
+.agent-card:focus-visible,
+.metric-card:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* ========================================================================
+   KEYBOARD NAVIGATION
+   ======================================================================== */
+
+/* Skip to main content link */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--accent-primary);
+  color: white;
+  padding: var(--space-3) var(--space-4);
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  z-index: var(--z-tooltip);
+  font-weight: var(--font-semibold);
+  transition: top var(--transition-fast);
+}
+
+.skip-link:focus {
+  top: var(--space-4);
+}
+
+/* Indicate interactive elements */
+[role="button"],
+[role="link"],
+[role="tab"],
+[role="menuitem"] {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Disabled state for interactive elements */
+[aria-disabled="true"],
+[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ========================================================================
+   SCREEN READER UTILITIES
+   ======================================================================== */
+
+/* Screen reader only (visually hidden but accessible to AT) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Screen reader only on focus */
+.sr-only-focusable:not(:focus):not(:focus-within) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Not for screen readers (aria-hidden visual content) */
+[aria-hidden="true"] {
+  speak: never;
+}
+
+/* ========================================================================
+   ARIA LIVE REGIONS
+   ======================================================================== */
+
+/* Polite announcements (don't interrupt) */
+[aria-live="polite"] {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* Assertive announcements (interrupt immediately) */
+[aria-live="assertive"] {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ========================================================================
+   FORM ACCESSIBILITY
+   ======================================================================== */
+
+/* Required field indicator */
+[aria-required="true"]::after,
+[required]::after {
+  content: " *";
+  color: var(--color-error);
+  margin-left: var(--space-1);
+}
+
+/* Invalid field styling */
+[aria-invalid="true"],
+input:invalid,
+select:invalid,
+textarea:invalid {
+  border-color: var(--color-error) !important;
+  background: var(--color-error-bg);
+}
+
+/* Error message styling */
+[role="alert"],
+.error-message {
+  color: var(--color-error);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Field descriptions */
+[aria-describedby] + .field-description {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  margin-top: var(--space-1);
+}
+
+/* ========================================================================
+   INTERACTIVE STATES
+   ======================================================================== */
+
+/* Pressed state for buttons */
+[aria-pressed="true"] {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Expanded state for accordions/dropdowns */
+[aria-expanded="true"] {
+  /* Visual indicator handled by component */
+}
+
+/* Selected state for tabs/options */
+[aria-selected="true"] {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Checked state for checkboxes/radios */
+[aria-checked="true"] {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+/* ========================================================================
+   MODAL & DIALOG ACCESSIBILITY
+   ======================================================================== */
+
+/* Dialog/Modal backdrop */
+[role="dialog"],
+[role="alertdialog"] {
+  position: fixed;
+  z-index: var(--z-modal);
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Focus trap for modals */
+.modal-content:focus {
+  outline: none;
+}
+
+/* ========================================================================
+   LOADING & PROGRESS INDICATORS
+   ======================================================================== */
+
+/* Loading spinner accessibility */
+[role="status"][aria-busy="true"] {
+  position: relative;
+}
+
+/* Progress bars */
+[role="progressbar"] {
+  background: var(--bg-surface);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  height: 8px;
+}
+
+[role="progressbar"] > div {
+  background: var(--accent-primary);
+  height: 100%;
+  transition: width var(--transition-normal);
+}
+
+/* ========================================================================
+   CONTRAST & READABILITY
+   ======================================================================== */
+
+/* Ensure minimum contrast ratios (WCAG AA = 4.5:1 for normal text) */
+.low-contrast-warning {
+  /* This class can be used to mark elements that may not meet contrast requirements */
+  outline: 2px dashed var(--color-warning);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --border-default: rgba(255, 255, 255, 0.3);
+    --border-strong: rgba(255, 255, 255, 0.5);
+    --text-secondary: rgba(248, 250, 252, 0.9);
+  }
+
+  *:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* ========================================================================
+   REDUCED MOTION
+   ======================================================================== */
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Disable pulse animations */
+  .pulse,
+  [data-pulse="true"],
+  .status-orb[data-pulse="true"] {
+    animation: none !important;
+  }
+}
+
+/* ========================================================================
+   TOUCH TARGETS (WCAG 2.5.5 - Target Size)
+   ======================================================================== */
+
+/* Ensure minimum 44x44px touch targets on touch devices */
+@media (pointer: coarse) {
+  button,
+  a,
+  input[type="checkbox"],
+  input[type="radio"],
+  [role="button"],
+  [role="link"] {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* ========================================================================
+   LANDMARKS & REGIONS
+   ======================================================================== */
+
+/* Main content landmark */
+main,
+[role="main"] {
+  display: block;
+}
+
+/* Navigation landmark */
+nav,
+[role="navigation"] {
+  display: block;
+}
+
+/* Complementary content */
+aside,
+[role="complementary"] {
+  display: block;
+}
+
+/* ========================================================================
+   TOOLTIPS ACCESSIBILITY
+   ======================================================================== */
+
+[role="tooltip"] {
+  position: absolute;
+  z-index: var(--z-tooltip);
+  background: var(--bg-deep);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+  max-width: 250px;
+}
+
+/* ========================================================================
+   TABLE ACCESSIBILITY
+   ======================================================================== */
+
+/* Table headers */
+th {
+  text-align: left;
+  font-weight: var(--font-semibold);
+}
+
+/* Row headers */
+th[scope="row"] {
+  font-weight: var(--font-medium);
+}
+
+/* Caption for tables */
+caption {
+  text-align: left;
+  margin-bottom: var(--space-3);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+}

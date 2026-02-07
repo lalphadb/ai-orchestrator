@@ -1,0 +1,227 @@
+version: '3.8'
+
+# Stack Observabilité Complète
+# Traefik + Prometheus + Loki + Grafana + Exporters
+
+networks:
+  web:
+    external: true
+  monitoring:
+    external: true
+  traefik-net:
+    external: true
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  traefik_logs:
+  letsencrypt:
+
+services:
+  # ============================================
+  # TRAEFIK - Reverse Proxy (DÉSACTIVÉ - utilise Traefik existant)
+  # ============================================
+  # traefik:
+  #   image: traefik:v2.11
+  #   container_name: traefik
+  #   restart: unless-stopped
+  #   security_opt:
+  #     - no-new-privileges:true
+  #   networks:
+  #     - web
+  #     - monitoring
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #     - "127.0.0.1:8080:8080"  # Dashboard (localhost only)
+  #     - "8082:8082"  # Métriques Prometheus
+  #   environment:
+  #     - TZ=America/Toronto
+  #     # Cloudflare API (si DNS challenge)
+  #     # - CF_API_EMAIL=admin@4lb.ca
+  #     # - CF_DNS_API_TOKEN=your_token
+  #   volumes:
+  #     - /etc/localtime:/etc/localtime:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+  #     - ./traefik/dynamic:/etc/traefik/dynamic:ro
+  #     - letsencrypt:/letsencrypt
+  #     - traefik_logs:/var/log/traefik
+  #   labels:
+  #     - "traefik.enable=true"
+  #
+  #     # Dashboard
+  #     - "traefik.http.routers.dashboard.rule=Host(`traefik.4lb.ca`)"
+  #     - "traefik.http.routers.dashboard.service=api@internal"
+  #     - "traefik.http.routers.dashboard.entrypoints=websecure"
+  #     - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+  #     - "traefik.http.routers.dashboard.middlewares=dashboard-auth"
+  #
+  #     # Basic auth (générer avec: htpasswd -nb admin password)
+  #     - "traefik.http.middlewares.dashboard-auth.basicauth.users=admin:$$apr1$$8Q2xLbFp$$1234567890"
+
+  # ============================================
+  # PROMETHEUS - Métriques
+  # ============================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    user: "65534:65534"  # nobody
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Access hôte depuis container
+    networks:
+      - web
+      - monitoring
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.size=10GB'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.4lb.ca`)"
+      - "traefik.http.routers.prometheus.entrypoints=websecure"
+      - "traefik.http.routers.prometheus.tls.certresolver=letsencrypt"
+      - "traefik.http.services.prometheus.loadbalancer.server.port=9090"
+
+  # ============================================
+  # LOKI - Logs Aggregation
+  # ============================================
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: loki
+    restart: unless-stopped
+    user: "10001:10001"
+    networks:
+      - monitoring
+    ports:
+      - "127.0.0.1:3100:3100"
+    command: -config.file=/etc/loki/loki.yml
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+
+  # ============================================
+  # PROMTAIL - Logs Collector
+  # ============================================
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: promtail
+    restart: unless-stopped
+    networks:
+      - monitoring
+    ports:
+      - "127.0.0.1:9080:9080"
+    command: -config.file=/etc/promtail/promtail.yml
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/promtail.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # - traefik_logs:/var/log/traefik:ro  # Désactivé - Traefik externe
+
+  # ============================================
+  # GRAFANA - Visualisation
+  # ============================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    user: "472:472"
+    networks:
+      - web
+      - monitoring
+      - traefik-net
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - GF_SERVER_ROOT_URL=https://grafana.4lb.ca
+      - GF_SECURITY_ADMIN_PASSWORD=Gr@fana4lb2025!!
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-piechart-panel
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_LOG_MODE=console file
+      - GF_LOG_LEVEL=info
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-net"
+      - "traefik.http.routers.grafana.rule=Host(`grafana.4lb.ca`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+
+  # ============================================
+  # NODE EXPORTER - Métriques Système
+  # ============================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    networks:
+      - monitoring
+    ports:
+      - "127.0.0.1:9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  # ============================================
+  # CADVISOR - Métriques Docker
+  # ============================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: unless-stopped
+    networks:
+      - monitoring
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+
+  # ============================================
+  # ALERTMANAGER (optionnel)
+  # ============================================
+  # alertmanager:
+  #   image: prom/alertmanager:latest
+  #   container_name: alertmanager
+  #   restart: unless-stopped
+  #   networks:
+  #     - monitoring
+  #   ports:
+  #     - "127.0.0.1:9093:9093"
+  #   command:
+  #     - '--config.file=/etc/alertmanager/alertmanager.yml'
+  #     - '--storage.path=/alertmanager'
+  #   volumes:
+  #     - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+  #     - alertmanager_data:/alertmanager

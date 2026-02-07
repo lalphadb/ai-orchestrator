@@ -1,0 +1,141 @@
+groups:
+  - name: http_errors
+    interval: 30s
+    rules:
+      # ==========================================
+      # ERREURS 5xx
+      # ==========================================
+      - alert: HighErrorRate5xx
+        expr: |
+          (
+            sum(rate(traefik_service_requests_total{code=~"5.."}[5m]))
+            /
+            sum(rate(traefik_service_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: traefik
+        annotations:
+          summary: "Taux d'erreur 5xx élevé ({{ $value | humanizePercentage }})"
+          description: "Plus de 5% des requêtes retournent une erreur 5xx depuis 2 minutes"
+
+      # ==========================================
+      # ERREURS 4xx
+      # ==========================================
+      - alert: HighErrorRate4xx
+        expr: |
+          (
+            sum(rate(traefik_service_requests_total{code=~"4.."}[5m]))
+            /
+            sum(rate(traefik_service_requests_total[5m]))
+          ) > 0.20
+        for: 5m
+        labels:
+          severity: warning
+          component: traefik
+        annotations:
+          summary: "Taux d'erreur 4xx élevé ({{ $value | humanizePercentage }})"
+          description: "Plus de 20% des requêtes retournent une erreur 4xx"
+
+      # ==========================================
+      # LATENCE ÉLEVÉE
+      # ==========================================
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(traefik_service_request_duration_seconds_bucket[5m])) by (le, service)
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: traefik
+        annotations:
+          summary: "Latence p95 > 5s sur {{ $labels.service }}"
+          description: "95% des requêtes prennent plus de 5 secondes"
+
+      # ==========================================
+      # BACKEND DOWN
+      # ==========================================
+      - alert: BackendDown
+        expr: |
+          sum by (service) (traefik_service_server_up) == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: traefik
+        annotations:
+          summary: "Backend {{ $labels.service }} DOWN"
+          description: "Aucun serveur disponible pour {{ $labels.service }}"
+
+  # ==========================================
+  # AI-ORCHESTRATOR SPECIFIC
+  # ==========================================
+  - name: ai_orchestrator
+    interval: 30s
+    rules:
+      - alert: AIBackendDown
+        expr: up{job="ai-orchestrator-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: ai-orchestrator
+        annotations:
+          summary: "AI-Orchestrator Backend DOWN"
+          description: "Le backend AI-Orchestrator ne répond plus"
+
+      - alert: HighAILatency
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="ai-orchestrator-backend"}[5m])) by (le)
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: ai-orchestrator
+        annotations:
+          summary: "Latence AI élevée (p95 > 10s)"
+
+  # ==========================================
+  # INFRASTRUCTURE
+  # ==========================================
+  - name: infrastructure
+    interval: 60s
+    rules:
+      - alert: HighDiskUsage
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/"}
+            /
+            node_filesystem_size_bytes{mountpoint="/"}
+          ) < 0.10
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Disque presque plein (< 10% libre)"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            node_memory_MemAvailable_bytes
+            /
+            node_memory_MemTotal_bytes
+          ) < 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Mémoire faible (< 10% libre)"
+
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "CPU élevé (> 90%)"
