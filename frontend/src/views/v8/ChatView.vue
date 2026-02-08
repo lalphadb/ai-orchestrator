@@ -397,9 +397,13 @@ function statusToOrbStatus(status) {
 }
 
 function formatDuration(run) {
-  if (!run) return '0s'
-  const duration = run.endTime ? run.endTime - run.startTime : Date.now() - run.startTime
-  return `${Math.round(duration / 1000)}s`
+  if (!run || !run.startedAt) return '0s'
+  const startMs = new Date(run.startedAt).getTime()
+  const endMs = run.endedAt ? new Date(run.endedAt).getTime() : Date.now()
+  const duration = endMs - startMs
+  if (isNaN(duration) || duration < 0) return '0s'
+  if (duration < 1000) return `${duration}ms`
+  return `${(duration / 1000).toFixed(1)}s`
 }
 
 // Auto-scroll to bottom when new messages arrive

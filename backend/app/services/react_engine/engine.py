@@ -177,6 +177,8 @@ Date actuelle: {datetime}
         current_prompt = conversation_context + user_message
         iteration = 0
 
+        logger.info(f"[DEBUG ReactEngine] Run {run_id}: starting, model={model}, history_len={len(history)}")
+        
         if websocket:
             await event_emitter.emit(
                 websocket, "thinking", run_id, {"message": "Analyse...", "iteration": 0}
@@ -189,6 +191,7 @@ Date actuelle: {datetime}
             if websocket:
                 full_response = ""
 
+                logger.info(f"[DEBUG ReactEngine] Run {run_id}: starting LLM stream (iteration {iteration})")
                 async for token in ollama_client.generate_stream(
                     prompt=current_prompt,
                     model=model,
@@ -208,6 +211,8 @@ Date actuelle: {datetime}
                         logger.warning(f"Token emit failed: {e}")
 
                 response_text = full_response
+                logger.info(f"[DEBUG ReactEngine] Run {run_id}: LLM stream complete, response_len={len(full_response)}")
+                logger.info(f"[DEBUG ReactEngine] Run {run_id}: response preview: {full_response[:200]}")
             else:
                 result = await ollama_client.generate(
                     prompt=current_prompt,

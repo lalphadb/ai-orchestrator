@@ -9,18 +9,18 @@ import os
 import time
 from collections import defaultdict
 
-from fastapi import (APIRouter, Depends, HTTPException, Query, Request,
-                     WebSocket, WebSocketDisconnect)
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from sqlalchemy.orm import Session
-
+from app.core.config import settings
 from app.core.database import Conversation, Message, get_db
 from app.core.security import generate_uuid, get_current_user_optional
 from app.models import ChatRequest, ChatResponse
 from app.models.workflow import WorkflowResponse
 from app.services.react_engine.workflow_engine import workflow_engine
 from app.services.websocket.event_emitter import event_emitter
+from fastapi import (APIRouter, Depends, HTTPException, Query, Request,
+                     WebSocket, WebSocketDisconnect)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/chat")
 
@@ -64,10 +64,10 @@ ws_rate_limiter = WSRateLimiter(max_messages=30, window_seconds=60)
 def normalize_model(model):
     """Normalise le model pour s'assurer que c'est une string"""
     if model is None:
-        return "kimi-k2.5:cloud"  # Modèle par défaut
+        return settings.DEFAULT_MODEL
     if isinstance(model, dict):
         # Si c'est un dict, extraire le nom
-        return model.get("name", "kimi-k2.5:cloud")
+        return model.get("name", settings.DEFAULT_MODEL)
     if isinstance(model, str):
         return model
     # Sinon, convertir en string
@@ -93,7 +93,11 @@ async def chat(
         conversation = Conversation(
             id=generate_uuid(),
             user_id=current_user["sub"] if current_user else None,
-            title=chat_request.message[:50] + "..." if len(chat_request.message) > 50 else chat_request.message,
+            title=(
+                chat_request.message[:50] + "..."
+                if len(chat_request.message) > 50
+                else chat_request.message
+            ),
             model=normalize_model(chat_request.model),
         )
         db.add(conversation)
@@ -250,6 +254,7 @@ async def websocket_chat(
             if not conversation_id:
                 conversation = Conversation(
                     id=generate_uuid(),
+                    user_id=user_id,
                     title=message[:50],
                     model=normalize_model(model),
                 )
@@ -282,6 +287,10 @@ async def websocket_chat(
 
             # Exécuter via WorkflowEngine avec WebSocket
             # NOTE: workflow_engine.run() handles terminal events internally
+            import logging as _logging
+            _chat_logger = _logging.getLogger("app.api.v1.chat")
+            _chat_logger.info(f"[DEBUG Chat] Starting workflow for run {run_id}, message: {message[:80]}...")
+            _chat_logger.info(f"[DEBUG Chat] Model: {normalize_model(model)}, conv_id: {conversation_id}")
             result = await workflow_engine.run(
                 user_message=message,
                 conversation_id=conversation_id,
@@ -292,6 +301,8 @@ async def websocket_chat(
                 run_id=run_id,
             )
 
+            _chat_logger.info(f"[DEBUG Chat] Workflow completed for run {run_id}, response length: {len(result.response) if result.response else 0}")
+            
             # Sauvegarder réponse
             tools_names = [t["tool"] for t in result.tools_used] if result.tools_used else []
 
@@ -307,12 +318,25 @@ async def websocket_chat(
             db.commit()
 
     except WebSocketDisconnect:
-        pass
+        import logging as _logging
+        _logging.getLogger("app.api.v1.chat").info("[DEBUG Chat] WebSocket disconnected")
     except Exception as e:
+        import logging as _logging
+        import traceback
+        _chat_logger = _logging.getLogger("app.api.v1.chat")
+        _chat_logger.error(f"[CRITICAL Chat] Unhandled exception in websocket_chat: {e}")
+        _chat_logger.error(f"[CRITICAL Chat] Traceback: {traceback.format_exc()}")
         try:
-            await websocket.send_json({"type": "error", "data": str(e)})
-        except Exception:
-            pass
+            # Try to send proper v8 error terminal event
+            if 'run_id' in dir():
+                await event_emitter.emit_terminal(
+                    websocket, "error", run_id,
+                    {"message": f"Erreur interne: {str(e)}"}
+                )
+            else:
+                await websocket.send_json({"type": "error", "data": {"message": str(e)}})
+        except Exception as send_err:
+            _chat_logger.error(f"[CRITICAL Chat] Failed to send error: {send_err}")
 
 
 async def handle_rerun_verify(data: dict, ws: WebSocket, db: Session, user_id: str):
@@ -419,7 +443,7 @@ async def handle_force_repair(data: dict, ws: WebSocket, db: Session, user_id: s
     import uuid
 
     conversation_id = data.get("conversation_id")
-    model = data.get("model", "kimi-k2.5:cloud")
+    model = data.get("model", settings.DEFAULT_MODEL)
 
     # Generate run_id for this force_repair action
     run_id = str(uuid.uuid4())[:8]
@@ -545,8 +569,6 @@ async def handle_get_models(ws: WebSocket):
     Utilisé pour rafraîchir la liste dans l'UI.
     """
     import httpx
-
-    from app.core.config import settings
 
     try:
         async with httpx.AsyncClient() as client:

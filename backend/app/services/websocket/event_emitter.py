@@ -361,8 +361,9 @@ class WSEventEmitter:
         """
         try:
             await websocket.send_json(event_dict)
-        except RuntimeError as e:
-            if "WebSocket is not connected" in str(e):
+        except (RuntimeError, Exception) as e:
+            error_msg = str(e)
+            if "WebSocket is not connected" in error_msg or "close message has been sent" in error_msg or "websocket.close" in error_msg.lower():
                 # CRQ-P1-5: Buffer dans queue si activé
                 if settings.ENABLE_EVENT_QUEUE and run_id:
                     await self.event_queue.enqueue(run_id, event_dict)

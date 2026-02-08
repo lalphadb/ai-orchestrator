@@ -89,7 +89,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_BURST: int = 10
 
     # Database
-    DATABASE_URL: str = "sqlite:///./ai_orchestrator.db"
+    DATABASE_URL: str = "sqlite:///./data/orchestrator.db"
 
     # Ollama
     OLLAMA_URL: str = "http://localhost:11434"
@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     # Prompt Injection Detection (CRQ-P0-3)
     ENFORCE_PROMPT_INJECTION_DETECTION: bool = False  # Default OFF for backward compat
     PROMPT_INJECTION_STRICT_MODE: bool = False  # Detect MEDIUM severity too
+
+    # Registration Control
+    ALLOW_REGISTRATION: bool = True  # Set to False to disable open registration
 
     # HttpOnly Cookies (CRQ-P0-4)
     USE_HTTPONLY_COOKIES: bool = False  # Default OFF for backward compat

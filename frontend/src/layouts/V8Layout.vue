@@ -12,7 +12,7 @@
           </div>
           <div>
             <div class="font-semibold">Orchestrator</div>
-            <div class="text-xs text-gray-500">v8.0</div>
+            <div class="text-xs text-gray-500">v8.1.0</div>
           </div>
         </router-link>
       </div>
@@ -274,13 +274,13 @@ const mainNav = [
 const monitoringNav = [
   { to: '/v8/agents', label: 'Agents', icon: AgentsIcon },
   { to: '/v8/models', label: 'Models', icon: ModelsIcon },
-  { to: '/tools', label: 'Tools', icon: ToolsIcon },
+  { to: '/v8/tools', label: 'Tools', icon: ToolsIcon },
   { to: '/v8/memory', label: 'Memory', icon: MemoryIcon },
   { to: '/v8/audit', label: 'Audit', icon: AuditIcon },
   { to: '/v8/system', label: 'System', icon: SystemIcon },
 ]
 
-const configNav = [{ to: '/settings', label: 'Settings', icon: SettingsIcon }]
+const configNav = [{ to: '/v8/settings', label: 'Settings', icon: SettingsIcon }]
 
 const isActive = (to) => {
   return route.path === to || (to !== '/' && route.path.startsWith(to))

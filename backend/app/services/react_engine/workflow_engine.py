@@ -134,6 +134,8 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
         try:
             # Détecter si c'est une question simple (pas besoin de spec/plan)
             is_simple = self._is_simple_request(user_message)
+            logger.info(f"[DEBUG Workflow] Run {run_id}: is_simple={is_simple}, skip_spec={skip_spec}, model={model}")
+            logger.info(f"[DEBUG Workflow] Run {run_id}: message={user_message[:80]}")
 
             if is_simple or skip_spec:
                 # Mode simplifié: exécuter directement
@@ -150,7 +152,9 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
                         },
                     )
 
+                logger.info(f"[DEBUG Workflow] Run {run_id}: calling _execute (simple path)")
                 execution = await self._execute(user_message, model, history, websocket, run_id)
+                logger.info(f"[DEBUG Workflow] Run {run_id}: _execute returned, response length={len(execution.response) if execution.response else 0}")
                 state.execution = execution
 
                 # Quick check sans QA complet

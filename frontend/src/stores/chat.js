@@ -831,7 +831,7 @@ export const useChatStore = defineStore('chat', () => {
         const activeRuns = runIds
           .map((id) => runs.value.get(id))
           .filter((r) => r && r.status === RunStatus.RUNNING)
-          .sort((a, b) => b.startTime - a.startTime)
+          .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
 
         if (activeRuns.length > 0) {
           activeRunId.value = activeRuns[0].id

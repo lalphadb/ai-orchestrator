@@ -512,7 +512,7 @@
 
     <!-- Footer with actions -->
     <div
-      v-if="run?.complete"
+      v-if="run?.terminal"
       class="p-3 border-t border-gray-700/50 bg-gradient-to-t from-gray-800/30 to-transparent space-y-2"
     >
       <!-- Verdict badge -->
@@ -533,7 +533,7 @@
       <!-- Actions -->
       <div class="flex gap-2">
         <button
-          :disabled="isReVerifying || !run.complete"
+          :disabled="isReVerifying || !run.terminal"
           class="flex-1 px-3 py-2 bg-gradient-to-r from-blue-600/30 to-blue-500/20 hover:from-blue-600/50 hover:to-blue-500/30 text-blue-300 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 border border-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           title="Relancer la verification QA"
           @click="handleReVerify"
@@ -560,7 +560,7 @@
         </button>
         <button
           v-if="run.verdict?.status === 'FAIL'"
-          :disabled="isRepairing || !run.complete"
+          :disabled="isRepairing || !run.terminal"
           class="flex-1 px-3 py-2 bg-gradient-to-r from-orange-600/30 to-yellow-500/20 hover:from-orange-600/50 hover:to-yellow-500/30 text-orange-300 text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 border border-orange-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
           title="Forcer un cycle de reparation"
           @click="handleRepair"

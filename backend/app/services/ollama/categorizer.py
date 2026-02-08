@@ -110,8 +110,11 @@ def categorize_model(model: Dict[str, Any]) -> str:
             if re.search(pattern, model_name, re.IGNORECASE):
                 return category
 
-    # Fallback sur la famille
+    # Fallback sur la famille ou le nom
     if family in ["llama", "qwen", "gemma", "mistral", "phi"]:
+        return ModelCategory.CHAT
+    # Cloud / API models sans famille Ollama
+    if any(p in model_name for p in ["kimi", "gemini"]):
         return ModelCategory.CHAT
 
     return ModelCategory.UNKNOWN

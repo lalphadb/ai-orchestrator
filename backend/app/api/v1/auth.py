@@ -8,18 +8,17 @@ import os
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
-from fastapi import (APIRouter, Depends, HTTPException, Request, Response,
-                     status)
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from sqlalchemy.orm import Session
-
 from app.core.database import User, get_db
 from app.core.security import (create_access_token, create_refresh_token,
                                generate_uuid, get_current_user,
                                get_password_hash, verify_password,
                                verify_refresh_token)
 from app.models import Token, UserCreate, UserLogin, UserResponse
+from fastapi import (APIRouter, Depends, HTTPException, Request, Response,
+                     status)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/auth")
 
@@ -66,6 +65,12 @@ async def register(
     request: Request, response: Response, user_data: UserCreate, db: Session = Depends(get_db)
 ):
     """Inscription d'un nouvel utilisateur"""
+
+    if not settings.ALLOW_REGISTRATION:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="L'inscription est désactivée",
+        )
 
     # Vérifier si l'utilisateur existe
     existing = db.query(User).filter(User.username == user_data.username).first()

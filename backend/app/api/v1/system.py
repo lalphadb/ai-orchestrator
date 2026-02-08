@@ -267,12 +267,18 @@ async def get_stats(db: Session = Depends(get_db)):
     total_conversations = db.query(Conversation).count()
     total_messages = db.query(Message).count()
 
-    # Ollama status
-    ollama_ok = await ollama_client.health_check()
+    # Ollama status (with fallback for cold start / timeout)
+    try:
+        ollama_ok = await ollama_client.health_check()
+    except Exception:
+        ollama_ok = False
 
     # Process info
-    process = psutil.Process()
-    memory_mb = process.memory_info().rss / (1024 * 1024)
+    try:
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / (1024 * 1024)
+    except Exception:
+        memory_mb = 0.0
 
     return SystemStats(
         version=settings.APP_VERSION,
@@ -320,6 +326,16 @@ async def get_models():
             "details": m.get("details"),
         }
         for m in all_models
+    ]
+
+    # Dédupliquer: si "model:latest" et "model" existent, garder "model:latest"
+    latest_names = {
+        m["name"].replace(":latest", "") for m in model_list if m["name"].endswith(":latest")
+    }
+    model_list = [
+        m
+        for m in model_list
+        if not (not m["name"].endswith(":latest") and m["name"] in latest_names)
     ]
 
     # Ajouter les modèles configurés s'ils ne sont pas dans la liste
