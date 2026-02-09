@@ -134,9 +134,10 @@ SUCCESS_RATE = Gauge("ai_orchestrator_success_rate", "Taux de succès des exécu
 
 # ==================== MÉTRIQUES SYSTÈME ====================
 
-# Connexion ChromaDB
-CHROMADB_CONNECTED = Gauge(
-    "ai_orchestrator_chromadb_connected", "État de connexion à ChromaDB (1=connecté, 0=déconnecté)"
+# Connexion Learning Memory (PostgreSQL + pgvector)
+LEARNING_MEMORY_CONNECTED = Gauge(
+    "ai_orchestrator_learning_memory_connected",
+    "Learning memory connection state (1=connected, 0=disconnected)",
 )
 
 # Connexion Ollama
@@ -163,12 +164,12 @@ async def metrics():
 def update_learning_metrics(memory_stats: dict, evaluator_stats: dict = None):
     """Met à jour les métriques d'apprentissage."""
     if memory_stats.get("status") == "connected":
-        CHROMADB_CONNECTED.set(1)
+        LEARNING_MEMORY_CONNECTED.set(1)
         LEARNING_EXPERIENCES.set(memory_stats.get("experiences_count", 0))
         LEARNING_PATTERNS.set(memory_stats.get("patterns_count", 0))
         LEARNING_CORRECTIONS.set(memory_stats.get("corrections_count", 0))
     else:
-        CHROMADB_CONNECTED.set(0)
+        LEARNING_MEMORY_CONNECTED.set(0)
 
     if evaluator_stats:
         EVALUATION_SCORE.labels(metric="overall").set(evaluator_stats.get("overall", 0))

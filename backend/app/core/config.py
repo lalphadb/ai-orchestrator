@@ -89,7 +89,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_BURST: int = 10
 
     # Database
-    DATABASE_URL: str = "sqlite:///./data/orchestrator.db"
+    DATABASE_URL: str = "postgresql://lalpha:lalpha2024secure@127.0.0.1:5432/ai_orchestrator"
+    REDIS_URL: str = "redis://127.0.0.1:6379/2"
 
     # Ollama
     OLLAMA_URL: str = "http://localhost:11434"
@@ -193,8 +194,7 @@ class Settings(BaseSettings):
     TIMEOUT_DOCKER: int = 300  # Docker compose up/down (5 min, pull images)
 
     # Database Timeouts
-    TIMEOUT_DB_CONNECT: int = 10  # Connexion SQLite
-    TIMEOUT_DB_QUERY: int = 10  # Requête DB individuelle (protection anti-blocage)
+    TIMEOUT_DB_QUERY: int = 10  # Requete DB individuelle
 
     # ALLOWLIST SÉCURISÉE
     COMMAND_ALLOWLIST: List[str] = [

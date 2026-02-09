@@ -1,35 +1,26 @@
 """
-Database module - SQLite avec SQLAlchemy
+Database module - PostgreSQL with pgvector (v8.2.0)
 """
 
-import os
+import json
 from datetime import datetime, timezone
+from typing import Generator
+
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Index, Integer,
+                        String, Text, create_engine)
+from sqlalchemy.orm import (Session, declarative_base, relationship,
+                            sessionmaker)
+
+from .config import settings
 
 
 def _utcnow():
     return datetime.now(timezone.utc)
 
 
-from typing import Generator
-
-from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Index, Integer,
-                        String, Text, create_engine)
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship, sessionmaker
-
-from .config import settings
-
-# Créer le dossier data si nécessaire
-os.makedirs("data", exist_ok=True)
-
 # Engine SQLAlchemy
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,  # SQLite only
-        "timeout": settings.TIMEOUT_DB_CONNECT,  # Protection anti-blocage (v7.1)
-    },
-)
+engine = create_engine(settings.DATABASE_URL)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -49,8 +40,8 @@ class User(Base):
     hashed_password = Column(String(100), nullable=False)
     is_active = Column(Boolean, default=True)
     is_admin = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=_utcnow)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     # Relations
     conversations = relationship(
@@ -68,8 +59,8 @@ class Conversation(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
     title = Column(String(200), default="Nouvelle conversation")
     model = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=_utcnow)
-    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     # Relations
     user = relationship("User", back_populates="conversations")
@@ -90,8 +81,8 @@ class Message(Base):
     content = Column(Text, nullable=False)
     model = Column(String(100), nullable=True)
     tools_used = Column(Text, nullable=True)  # JSON list
-    thinking = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=_utcnow)
+    thinking = Column(Text, nullable=True)  # JSON object
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     # Relations
     conversation = relationship("Conversation", back_populates="messages")
@@ -109,11 +100,11 @@ class Tool(Base):
     category = Column(String(50), default="general")
     enabled = Column(Boolean, default=True)
     usage_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=_utcnow)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
 
 
 class Feedback(Base):
-    """Feedback utilisateur sur les réponses (pour apprentissage)"""
+    """Feedback utilisateur sur les reponses"""
 
     __tablename__ = "feedbacks"
 
@@ -129,16 +120,11 @@ class Feedback(Base):
     )
 
     feedback_type = Column(String(20), nullable=False)  # positive, negative, correction
+    context = Column(
+        Text, nullable=True
+    )  # JSON: query, response, corrected_response, tools_used, reason
 
-    # Contexte
-    query = Column(Text, nullable=True)
-    response = Column(Text, nullable=True)
-    corrected_response = Column(Text, nullable=True)
-    tools_used = Column(Text, nullable=True)  # JSON
-    reason = Column(Text, nullable=True)
-
-    # Metadata
-    created_at = Column(DateTime, default=_utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
     # Relations
     message = relationship("Message", back_populates="feedbacks")
@@ -147,35 +133,46 @@ class Feedback(Base):
 
 
 class AuditLog(Base):
-    """Log d'audit pour traçabilité des actions sensibles"""
+    """Log d'audit pour tracabilite des actions sensibles"""
 
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, default=_utcnow, index=True)
+    timestamp = Column(DateTime(timezone=True), default=_utcnow, index=True)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
 
     # Action
-    action = Column(String(100), nullable=False, index=True)  # tool_execute, login, etc.
-    resource = Column(String(200), nullable=True)  # fichier, commande, etc.
+    action = Column(String(100), nullable=False, index=True)
+    resource = Column(String(200), nullable=True)
 
-    # Résultat
+    # Resultat
     allowed = Column(Boolean, nullable=False, default=True)
-    role = Column(String(50), nullable=True)  # VIEWER, OPERATOR, ADMIN
+    role = Column(String(50), nullable=True)
 
-    # Détails
-    command = Column(Text, nullable=True)  # Commande exécutée
-    parameters = Column(Text, nullable=True)  # JSON des paramètres
-    result = Column(Text, nullable=True)  # Résultat ou erreur
+    # Details (JSONB in PostgreSQL): command, parameters, result merged
+    details = Column(Text, nullable=True)  # JSON
 
     # Contexte
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(255), nullable=True)
 
 
+class LearningMemory(Base):
+    """Memoire d'apprentissage (remplace ChromaDB)"""
+
+    __tablename__ = "learning_memories"
+
+    id = Column(String(36), primary_key=True)
+    collection = Column(String(50), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    metadata_ = Column("metadata", Text, nullable=True)  # JSON - renamed to avoid conflict
+    embedding = Column(Vector(1024), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_utcnow)
+    updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
+
+
 # ===== DATABASE INDEXES (Performance) =====
 
-# Indices composites pour améliorer les requêtes courantes
 Index("ix_message_conversation_created", Message.conversation_id, Message.created_at)
 Index("ix_conversation_user_updated", Conversation.user_id, Conversation.updated_at)
 Index("ix_audit_user_timestamp", AuditLog.user_id, AuditLog.timestamp)
@@ -185,7 +182,7 @@ Index("ix_audit_user_timestamp", AuditLog.user_id, AuditLog.timestamp)
 
 
 def init_db():
-    """Initialiser la base de données"""
+    """Initialiser la base de donnees"""
     Base.metadata.create_all(bind=engine)
 
 

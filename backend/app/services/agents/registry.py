@@ -21,7 +21,7 @@ class AgentCapability(Enum):
     WEB = "web"  # Web research, scraping
     SELF_IMPROVE = "self_improve"  # Auto-improvement
     QA = "qa"  # Quality assurance
-    MEMORY = "memory"  # ChromaDB memory
+    MEMORY = "memory"  # PostgreSQL pgvector memory
     FILESYSTEM = "filesystem"  # File operations
 
 

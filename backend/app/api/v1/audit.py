@@ -5,12 +5,13 @@ Audit routes - Logs de sécurité et audit des actions
 import logging
 from datetime import datetime
 
-from app.core.database import AuditLog, get_db
-from app.core.security import get_current_user
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+from app.core.database import AuditLog, get_db
+from app.core.security import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +30,7 @@ class AuditLogResponse(BaseModel):
     resource: str | None = None
     allowed: bool
     role: str | None = None
-    command: str | None = None
-    result: str | None = None
+    details: str | None = None
 
 
 class AuditStatsResponse(BaseModel):

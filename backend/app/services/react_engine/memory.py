@@ -408,7 +408,7 @@ class DurableMemory:
             ("ai-orchestrator", {"port": 8001, "type": "systemd"}, "Backend AI Orchestrator"),
             ("traefik", {"port": 443, "type": "docker"}, "Reverse proxy"),
             ("ollama", {"port": 11434, "type": "native"}, "LLM inference"),
-            ("chromadb", {"port": 8000, "type": "docker"}, "Vector database"),
+            ("postgresql", {"port": 5432, "type": "docker"}, "Database + pgvector"),
         ]
 
         for key, value, desc in base_services:

@@ -233,18 +233,20 @@ async def get_improvement_priorities(
     """
     collector = get_feedback_collector()
 
-    priorities = collector.get_improvement_priorities()
-    problematic = collector.get_problematic_patterns(min_negative=2)
+    priorities = collector.get_improvement_priorities(db=db)
 
     return {
         "priorities": priorities,
-        "problematic_patterns": problematic[:5],
         "stats": collector.get_feedback_stats(db=db, hours=168),  # 7 jours
     }
 
 
 @router.get("/export/training")
-async def export_training_data(format: str = "jsonl", current_user: dict = Depends(get_admin_user)):
+async def export_training_data(
+    format: str = "jsonl",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_admin_user),
+):
     """
     [Admin] Exporte les données pour le fine-tuning.
 
@@ -252,8 +254,8 @@ async def export_training_data(format: str = "jsonl", current_user: dict = Depen
     """
     collector = get_feedback_collector()
 
-    data = collector.export_for_finetuning(format=format)
-    corrections = collector.get_corrections_for_training()
+    data = collector.export_for_finetuning(db=db, format=format)
+    corrections = collector.get_corrections_for_training(db=db)
 
     return {"training_data": data, "corrections_count": len(corrections), "format": format}
 

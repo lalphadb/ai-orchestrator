@@ -1,12 +1,12 @@
 """
 FeedbackCollector - Collecte et traitement du feedback utilisateur
 
-Gère:
-- Feedback positif/négatif sur les réponses
-- Persistence en base de données SQLite
+Gere:
+- Feedback positif/negatif sur les reponses
+- Persistence en base de donnees PostgreSQL
 - Analyse des tendances
-- Mise à jour des scores d'apprentissage
-- Export des données pour fine-tuning
+- Mise a jour des scores d'apprentissage
+- Export des donnees pour fine-tuning
 """
 
 import json
@@ -16,9 +16,10 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.orm import Session
+
 from app.core.database import Feedback as FeedbackModel
 from app.core.database import get_db_session
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +27,14 @@ logger = logging.getLogger(__name__)
 class FeedbackType(str, Enum):
     """Types de feedback."""
 
-    POSITIVE = "positive"  # 👍
-    NEGATIVE = "negative"  # 👎
-    CORRECTION = "correction"  # Correction fournie par l'utilisateur
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    CORRECTION = "correction"
 
 
 @dataclass
 class Feedback:
-    """Structure d'un feedback (pour compatibilité API)."""
+    """Structure d'un feedback (pour compatibilite API)."""
 
     message_id: str
     conversation_id: str
@@ -44,6 +45,16 @@ class Feedback:
     tools_used: Optional[List[str]] = None
     corrected_response: Optional[str] = None
     reason: Optional[str] = None
+
+
+def _parse_context(feedback_model: FeedbackModel) -> Dict[str, Any]:
+    """Parse the context JSON field from a Feedback model."""
+    if feedback_model.context:
+        try:
+            return json.loads(feedback_model.context)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
 
 
 class FeedbackCollector:
@@ -67,43 +78,33 @@ class FeedbackCollector:
         reason: Optional[str] = None,
     ) -> Feedback:
         """
-        Enregistre un feedback en base de données.
-
-        Args:
-            db: Session base de données
-            message_id: ID du message évalué
-            conversation_id: ID de la conversation
-            user_id: ID de l'utilisateur
-            feedback_type: Type de feedback
-            query: Question originale
-            response: Réponse évaluée
-            tools_used: Outils utilisés
-            corrected_response: Correction fournie (optionnel)
-            reason: Raison du feedback négatif (optionnel)
-
-        Returns:
-            Feedback enregistré
+        Enregistre un feedback en base de donnees.
         """
-        # Créer feedback DB
+        # Store all details in context JSON
+        context = {
+            "query": query,
+            "response": response,
+            "tools_used": tools_used,
+        }
+        if corrected_response:
+            context["corrected_response"] = corrected_response
+        if reason:
+            context["reason"] = reason
+
         feedback_db = FeedbackModel(
             message_id=message_id,
             conversation_id=conversation_id,
             user_id=user_id,
             feedback_type=feedback_type.value,
-            query=query,
-            response=response,
-            corrected_response=corrected_response,
-            tools_used=json.dumps(tools_used) if tools_used else None,
-            reason=reason,
+            context=json.dumps(context),
         )
 
         db.add(feedback_db)
         db.commit()
         db.refresh(feedback_db)
 
-        logger.info(f"Feedback {feedback_type.value} enregistré pour message {message_id}")
+        logger.info(f"Feedback {feedback_type.value} enregistre pour message {message_id}")
 
-        # Retourner objet Feedback pour compatibilité
         return Feedback(
             message_id=str(message_id),
             conversation_id=conversation_id,
@@ -119,17 +120,7 @@ class FeedbackCollector:
     def get_feedback_stats(
         self, db: Session, user_id: Optional[str] = None, hours: int = 24
     ) -> Dict[str, Any]:
-        """
-        Retourne les statistiques de feedback depuis la DB.
-
-        Args:
-            db: Session base de données
-            user_id: Filtrer par utilisateur (optionnel)
-            hours: Période en heures
-
-        Returns:
-            Statistiques détaillées
-        """
+        """Retourne les statistiques de feedback."""
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
         query = db.query(FeedbackModel)
@@ -137,12 +128,9 @@ class FeedbackCollector:
         if user_id:
             query = query.filter(FeedbackModel.user_id == user_id)
 
-        # Filtrer par période
         query = query.filter(FeedbackModel.created_at >= cutoff)
-
         feedbacks = query.all()
 
-        # Calculer stats
         total = len(feedbacks)
         positive = len([f for f in feedbacks if f.feedback_type == "positive"])
         negative = len([f for f in feedbacks if f.feedback_type == "negative"])
@@ -159,26 +147,14 @@ class FeedbackCollector:
         }
 
     def get_feedback_for_message(self, db: Session, message_id: int) -> List[FeedbackModel]:
-        """Récupère tous les feedbacks pour un message depuis la DB."""
+        """Recupere tous les feedbacks pour un message."""
         return db.query(FeedbackModel).filter(FeedbackModel.message_id == message_id).all()
 
     def get_corrections_for_training(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Récupère les corrections pour le fine-tuning depuis la DB.
-
-        Args:
-            db: Session base de données
-            limit: Nombre maximum de corrections
-
-        Returns:
-            Liste de paires (mauvaise réponse, correction)
-        """
+        """Recupere les corrections pour le fine-tuning."""
         corrections_db = (
             db.query(FeedbackModel)
-            .filter(
-                FeedbackModel.feedback_type == "correction",
-                FeedbackModel.corrected_response.isnot(None),
-            )
+            .filter(FeedbackModel.feedback_type == "correction")
             .order_by(FeedbackModel.created_at.desc())
             .limit(limit)
             .all()
@@ -186,69 +162,57 @@ class FeedbackCollector:
 
         corrections = []
         for f in corrections_db:
-            tools = json.loads(f.tools_used) if f.tools_used else []
-            corrections.append(
-                {
-                    "query": f.query,
-                    "bad_response": f.response,
-                    "good_response": f.corrected_response,
-                    "tools_used": tools,
-                    "timestamp": f.created_at.isoformat(),
-                }
-            )
+            ctx = _parse_context(f)
+            if ctx.get("corrected_response"):
+                corrections.append(
+                    {
+                        "query": ctx.get("query", ""),
+                        "bad_response": ctx.get("response", ""),
+                        "good_response": ctx["corrected_response"],
+                        "tools_used": ctx.get("tools_used", []),
+                        "timestamp": f.created_at.isoformat(),
+                    }
+                )
 
         return corrections
 
     def export_for_finetuning(self, db: Session, format: str = "jsonl") -> str:
-        """
-        Exporte les données pour fine-tuning depuis la DB.
-
-        Args:
-            db: Session base de données
-            format: Format d'export (jsonl, json)
-
-        Returns:
-            Données exportées en string
-        """
-        # Collecter les données positives et corrections
+        """Exporte les donnees pour fine-tuning."""
         training_data = []
 
-        # Feedbacks positifs = bons exemples
         positive_feedbacks = (
             db.query(FeedbackModel).filter(FeedbackModel.feedback_type == "positive").all()
         )
 
         for f in positive_feedbacks:
-            training_data.append(
-                {
-                    "messages": [
-                        {"role": "user", "content": f.query},
-                        {"role": "assistant", "content": f.response},
-                    ],
-                    "source": "positive_feedback",
-                }
-            )
+            ctx = _parse_context(f)
+            if ctx.get("query") and ctx.get("response"):
+                training_data.append(
+                    {
+                        "messages": [
+                            {"role": "user", "content": ctx["query"]},
+                            {"role": "assistant", "content": ctx["response"]},
+                        ],
+                        "source": "positive_feedback",
+                    }
+                )
 
-        # Corrections = meilleurs exemples
         corrections = (
-            db.query(FeedbackModel)
-            .filter(
-                FeedbackModel.feedback_type == "correction",
-                FeedbackModel.corrected_response.isnot(None),
-            )
-            .all()
+            db.query(FeedbackModel).filter(FeedbackModel.feedback_type == "correction").all()
         )
 
         for f in corrections:
-            training_data.append(
-                {
-                    "messages": [
-                        {"role": "user", "content": f.query},
-                        {"role": "assistant", "content": f.corrected_response},
-                    ],
-                    "source": "user_correction",
-                }
-            )
+            ctx = _parse_context(f)
+            if ctx.get("query") and ctx.get("corrected_response"):
+                training_data.append(
+                    {
+                        "messages": [
+                            {"role": "user", "content": ctx["query"]},
+                            {"role": "assistant", "content": ctx["corrected_response"]},
+                        ],
+                        "source": "user_correction",
+                    }
+                )
 
         if format == "jsonl":
             return "\n".join(json.dumps(d) for d in training_data)
@@ -256,18 +220,9 @@ class FeedbackCollector:
             return json.dumps(training_data, indent=2)
 
     def get_improvement_priorities(self, db: Session) -> List[Dict[str, Any]]:
-        """
-        Identifie les priorités d'amélioration depuis la DB.
-
-        Args:
-            db: Session base de données
-
-        Returns:
-            Liste triée des priorités
-        """
+        """Identifie les priorites d'amelioration."""
         priorities = []
 
-        # Analyser les feedbacks négatifs et corrections récents
         recent_negative = (
             db.query(FeedbackModel)
             .filter(
@@ -277,25 +232,24 @@ class FeedbackCollector:
             .all()
         )
 
-        # Grouper par outils utilisés
         tool_failures = {}
         for f in recent_negative:
-            if f.tools_used:
-                tools = json.loads(f.tools_used)
-                for tool in tools:
+            ctx = _parse_context(f)
+            tools_used = ctx.get("tools_used", [])
+            if tools_used:
+                for tool in tools_used:
                     tool_name = tool.get("name") if isinstance(tool, dict) else tool
                     tool_failures[tool_name] = tool_failures.get(tool_name, 0) + 1
 
-        # Ajouter aux priorités
         for tool, count in sorted(tool_failures.items(), key=lambda x: x[1], reverse=True)[:5]:
             if count >= 2:
                 priorities.append(
                     {
                         "type": "tool",
                         "priority": "high" if count >= 5 else "medium",
-                        "description": f"Outil problématique: {tool}",
+                        "description": f"Outil problematique: {tool}",
                         "failure_count": count,
-                        "action": "Vérifier la configuration et l'utilisation de cet outil",
+                        "action": "Verifier la configuration et l'utilisation de cet outil",
                     }
                 )
 

@@ -1,116 +1,84 @@
 """
-LearningMemory - Mémoire d'apprentissage basée sur ChromaDB
+LearningMemory - Memoire d'apprentissage basee sur PostgreSQL + pgvector
 
-Stocke et récupère les expériences pour améliorer les réponses:
-- Commandes réussies avec leur contexte
+Stocke et recupere les experiences pour ameliorer les reponses:
+- Commandes reussies avec leur contexte
 - Erreurs et leurs corrections
-- Patterns de résolution de problèmes
-- Préférences utilisateur
+- Patterns de resolution de problemes
+- Preferences utilisateur
 """
 
 import hashlib
 import json
 import logging
-import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import chromadb
-from chromadb.config import Settings
-from tenacity import (retry, retry_if_exception_type, stop_after_attempt,
-                      wait_exponential)
+import httpx
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.database import LearningMemory as LearningMemoryModel
+from app.core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
+# Ollama embedding endpoint
+OLLAMA_EMBED_URL = f"{settings.OLLAMA_URL}/api/embeddings"
+EMBED_MODEL = "bge-m3"
+
+
+def _generate_embedding(content: str) -> Optional[List[float]]:
+    """Generate embedding via Ollama bge-m3 (synchronous)."""
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.post(OLLAMA_EMBED_URL, json={"model": EMBED_MODEL, "prompt": content})
+            if resp.status_code == 200:
+                return resp.json().get("embedding", [])
+    except Exception as e:
+        logger.warning(f"Embedding generation failed: {e}")
+    return None
+
 
 class LearningMemory:
-    """Mémoire d'apprentissage persistante avec ChromaDB."""
+    """Memoire d'apprentissage persistante avec PostgreSQL + pgvector."""
 
-    def __init__(self, chroma_host: str = "localhost", chroma_port: int = 8000):
-        """
-        Initialise la connexion à ChromaDB avec retry automatique.
-
-        Args:
-            chroma_host: Hôte ChromaDB
-            chroma_port: Port ChromaDB
-        """
-        self.chroma_host = chroma_host
-        self.chroma_port = chroma_port
-        self.client = None
-        self.experiences = None
-        self.patterns = None
-        self.corrections = None
-        self.user_context = None
-
-        # Tenter connexion avec retry
+    def __init__(self):
+        """Initialise la connexion PostgreSQL."""
+        self.connected = False
         try:
-            self._connect_with_retry()
+            # Test connection
+            db = SessionLocal()
+            db.execute(text("SELECT 1"))
+            db.close()
+            self.connected = True
+            logger.info("LearningMemory connected to PostgreSQL")
         except Exception as e:
-            logger.error(f"Impossible de se connecter à ChromaDB après plusieurs tentatives: {e}")
-            self.client = None
+            logger.error(f"LearningMemory: PostgreSQL connection failed: {e}")
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((ConnectionError, Exception)),
-        reraise=True,
-    )
-    def _connect_with_retry(self):
-        """Connexion ChromaDB avec retry automatique (3 tentatives avec backoff exponentiel)."""
-        logger.info(f"Tentative de connexion à ChromaDB {self.chroma_host}:{self.chroma_port}...")
+    def _get_db(self) -> Session:
+        """Get a new database session."""
+        return SessionLocal()
 
-        self.client = chromadb.HttpClient(
-            host=self.chroma_host,
-            port=self.chroma_port,
-            settings=Settings(anonymized_telemetry=False),
-        )
-
-        # Initialiser les collections
-        self._init_collections()
-
-        logger.info(f"✅ LearningMemory connecté à ChromaDB {self.chroma_host}:{self.chroma_port}")
-
-    def reconnect(self):
-        """Force la reconnexion à ChromaDB (en cas de perte de connexion)."""
-        logger.info("🔄 Reconnexion forcée à ChromaDB...")
-        self.client = None
+    def reconnect(self) -> bool:
+        """Force reconnection test."""
         try:
-            self._connect_with_retry()
+            db = self._get_db()
+            db.execute(text("SELECT 1"))
+            db.close()
+            self.connected = True
             return True
         except Exception as e:
-            logger.error(f"❌ Échec de reconnexion à ChromaDB: {e}")
+            logger.error(f"Reconnection failed: {e}")
+            self.connected = False
             return False
 
-    def _init_collections(self):
-        """Initialise les collections ChromaDB."""
-        # Collection des expériences (succès/échecs)
-        self.experiences = self.client.get_or_create_collection(
-            name="ai_experiences",
-            metadata={"description": "Expériences d'exécution (succès/échecs)"},
-        )
-
-        # Collection des patterns de résolution
-        self.patterns = self.client.get_or_create_collection(
-            name="ai_patterns", metadata={"description": "Patterns de résolution de problèmes"}
-        )
-
-        # Collection des corrections d'erreurs
-        self.corrections = self.client.get_or_create_collection(
-            name="ai_corrections", metadata={"description": "Erreurs et leurs corrections"}
-        )
-
-        # Collection des préférences/contexte utilisateur
-        self.user_context = self.client.get_or_create_collection(
-            name="ai_user_context", metadata={"description": "Contexte et préférences utilisateur"}
-        )
-
-        logger.info("Collections ChromaDB initialisées")
-
     def _generate_id(self, content: str) -> str:
-        """Génère un ID unique basé sur le contenu."""
+        """Generate a unique ID based on content."""
         return hashlib.md5(content.encode()).hexdigest()[:16]
 
-    # ==================== EXPÉRIENCES ====================
+    # ==================== EXPERIENCES ====================
 
     def store_experience(
         self,
@@ -122,101 +90,99 @@ class LearningMemory:
         iterations: int,
         error: Optional[str] = None,
         user_id: Optional[str] = None,
-    ) -> str:
-        """
-        Stocke une expérience d'exécution.
-
-        Args:
-            query: Question/demande originale
-            response: Réponse générée
-            tools_used: Liste des outils utilisés
-            success: Si l'exécution a réussi
-            duration_ms: Durée en millisecondes
-            iterations: Nombre d'itérations ReAct
-            error: Message d'erreur si échec
-            user_id: ID utilisateur optionnel
-
-        Returns:
-            ID de l'expérience stockée
-        """
-        if not self.client:
+    ) -> Optional[str]:
+        """Stocke une experience d'execution."""
+        if not self.connected:
             return None
 
-        exp_id = self._generate_id(f"{query}{datetime.now().isoformat()}")
-
-        # Document texte pour la recherche sémantique
+        exp_id = self._generate_id(f"{query}{datetime.now(timezone.utc).isoformat()}")
         document = f"Query: {query}\nTools: {', '.join(tools_used)}\nSuccess: {success}"
         if error:
             document += f"\nError: {error}"
 
-        # Métadonnées structurées
         metadata = {
-            "query": query[:500],  # Limite pour ChromaDB
+            "query": query[:500],
             "success": success,
-            "tools_used": json.dumps(tools_used),
+            "tools_used": tools_used,
             "duration_ms": duration_ms,
             "iterations": iterations,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "user_id": user_id or "anonymous",
-            "score": 1.0 if success else 0.0,  # Score initial
+            "score": 1.0 if success else 0.0,
         }
-
         if error:
             metadata["error"] = error[:500]
 
+        db = self._get_db()
         try:
-            self.experiences.add(ids=[exp_id], documents=[document], metadatas=[metadata])
-            logger.info(f"Expérience stockée: {exp_id} (success={success})")
+            embedding = _generate_embedding(document)
+            entry = LearningMemoryModel(
+                id=exp_id,
+                collection="ai_experiences",
+                content=document,
+                metadata_=json.dumps(metadata),
+                embedding=embedding,
+            )
+            db.add(entry)
+            db.commit()
+            logger.info(f"Experience stored: {exp_id} (success={success})")
             return exp_id
         except Exception as e:
-            logger.error(f"Erreur stockage expérience: {e}")
+            db.rollback()
+            logger.error(f"Error storing experience: {e}")
             return None
+        finally:
+            db.close()
 
     def get_similar_experiences(
         self, query: str, n_results: int = 5, success_only: bool = True
     ) -> List[Dict[str, Any]]:
-        """
-        Récupère les expériences similaires pour enrichir le contexte.
-
-        Args:
-            query: Question actuelle
-            n_results: Nombre de résultats
-            success_only: Ne retourner que les succès
-
-        Returns:
-            Liste des expériences similaires avec leur score
-        """
-        if not self.client:
+        """Recupere les experiences similaires via recherche vectorielle."""
+        if not self.connected:
             return []
 
+        db = self._get_db()
         try:
-            # Recherche sémantique
-            where_filter = {"success": True} if success_only else None
+            embedding = _generate_embedding(query)
+            if not embedding:
+                return []
 
-            results = self.experiences.query(
-                query_texts=[query], n_results=n_results, where=where_filter
+            # pgvector cosine distance search
+            sql = text(
+                """
+                SELECT id, content, metadata, embedding <=> :emb AS distance
+                FROM learning_memories
+                WHERE collection = 'ai_experiences'
+                ORDER BY embedding <=> :emb
+                LIMIT :limit
+            """
             )
+            rows = db.execute(sql, {"emb": str(embedding), "limit": n_results}).fetchall()
 
             experiences = []
-            if results and results["metadatas"]:
-                for i, metadata in enumerate(results["metadatas"][0]):
-                    exp = {
-                        "id": results["ids"][0][i],
-                        "query": metadata.get("query", ""),
-                        "tools_used": json.loads(metadata.get("tools_used", "[]")),
-                        "success": metadata.get("success", False),
-                        "score": metadata.get("score", 0.0),
-                        "distance": results["distances"][0][i] if results["distances"] else 0,
-                        "relevance": 1
-                        - (results["distances"][0][i] if results["distances"] else 0),
+            for row in rows:
+                meta = json.loads(row.metadata) if row.metadata else {}
+                if success_only and not meta.get("success", False):
+                    continue
+                experiences.append(
+                    {
+                        "id": row.id,
+                        "query": meta.get("query", ""),
+                        "tools_used": meta.get("tools_used", []),
+                        "success": meta.get("success", False),
+                        "score": meta.get("score", 0.0),
+                        "distance": row.distance,
+                        "relevance": 1 - row.distance if row.distance else 0,
                     }
-                    experiences.append(exp)
+                )
 
             return experiences
 
         except Exception as e:
-            logger.error(f"Erreur recherche expériences: {e}")
+            logger.error(f"Error searching experiences: {e}")
             return []
+        finally:
+            db.close()
 
     # ==================== PATTERNS ====================
 
@@ -227,134 +193,127 @@ class LearningMemory:
         tools_sequence: List[str],
         success_rate: float,
         examples: List[str],
-    ) -> str:
-        """
-        Stocke un pattern de résolution réussi.
-
-        Args:
-            problem_type: Type de problème (ex: "docker_debug", "file_search")
-            solution_steps: Étapes de résolution
-            tools_sequence: Séquence d'outils utilisés
-            success_rate: Taux de succès du pattern
-            examples: Exemples de requêtes résolues
-
-        Returns:
-            ID du pattern
-        """
-        if not self.client:
+    ) -> Optional[str]:
+        """Stocke un pattern de resolution reussi."""
+        if not self.connected:
             return None
 
         pattern_id = self._generate_id(f"{problem_type}{json.dumps(tools_sequence)}")
-
         document = f"Problem: {problem_type}\nSteps: {'; '.join(solution_steps)}\nTools: {', '.join(tools_sequence)}"
 
         metadata = {
             "problem_type": problem_type,
-            "solution_steps": json.dumps(solution_steps),
-            "tools_sequence": json.dumps(tools_sequence),
+            "solution_steps": solution_steps,
+            "tools_sequence": tools_sequence,
             "success_rate": success_rate,
-            "examples": json.dumps(examples[:5]),  # Max 5 exemples
+            "examples": examples[:5],
             "usage_count": 1,
-            "last_used": datetime.now().isoformat(),
+            "last_used": datetime.now(timezone.utc).isoformat(),
         }
 
+        db = self._get_db()
         try:
-            # Vérifier si le pattern existe déjà
-            existing = self.patterns.get(ids=[pattern_id])
-            if existing and existing["ids"]:
-                # Mettre à jour le compteur
-                old_meta = existing["metadatas"][0]
+            existing = db.query(LearningMemoryModel).filter_by(id=pattern_id).first()
+            if existing:
+                old_meta = json.loads(existing.metadata_) if existing.metadata_ else {}
                 metadata["usage_count"] = old_meta.get("usage_count", 0) + 1
-                self.patterns.update(ids=[pattern_id], metadatas=[metadata])
+                existing.metadata_ = json.dumps(metadata)
+                existing.updated_at = datetime.now(timezone.utc)
             else:
-                self.patterns.add(ids=[pattern_id], documents=[document], metadatas=[metadata])
+                embedding = _generate_embedding(document)
+                entry = LearningMemoryModel(
+                    id=pattern_id,
+                    collection="ai_patterns",
+                    content=document,
+                    metadata_=json.dumps(metadata),
+                    embedding=embedding,
+                )
+                db.add(entry)
 
-            logger.info(f"Pattern stocké/mis à jour: {problem_type}")
+            db.commit()
+            logger.info(f"Pattern stored/updated: {problem_type}")
             return pattern_id
-
         except Exception as e:
-            logger.error(f"Erreur stockage pattern: {e}")
+            db.rollback()
+            logger.error(f"Error storing pattern: {e}")
             return None
+        finally:
+            db.close()
 
     def get_relevant_patterns(self, query: str, n_results: int = 3) -> List[Dict[str, Any]]:
-        """
-        Récupère les patterns pertinents pour la requête.
-
-        Args:
-            query: Question actuelle
-            n_results: Nombre de résultats
-
-        Returns:
-            Liste des patterns avec leurs métadonnées
-        """
-        if not self.client:
+        """Recupere les patterns pertinents via recherche vectorielle."""
+        if not self.connected:
             return []
 
+        db = self._get_db()
         try:
-            results = self.patterns.query(query_texts=[query], n_results=n_results)
-
-            patterns = []
-            if results and results["metadatas"]:
-                for i, metadata in enumerate(results["metadatas"][0]):
-                    pattern = {
-                        "problem_type": metadata.get("problem_type", ""),
-                        "solution_steps": json.loads(metadata.get("solution_steps", "[]")),
-                        "tools_sequence": json.loads(metadata.get("tools_sequence", "[]")),
-                        "success_rate": metadata.get("success_rate", 0.0),
-                        "usage_count": metadata.get("usage_count", 0),
-                        "relevance": 1
-                        - (results["distances"][0][i] if results["distances"] else 0),
-                    }
-                    patterns.append(pattern)
-
-            return patterns
-
-        except Exception as e:
-            logger.error(f"Erreur recherche patterns: {e}")
-            return []
-
-    def get_top_patterns(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Récupère les patterns les plus utilisés.
-
-        Args:
-            limit: Nombre maximum de patterns à retourner
-
-        Returns:
-            Liste des patterns triés par usage_count descendant
-        """
-        if not self.client:
-            return []
-
-        try:
-            # Récupérer tous les patterns
-            results = self.patterns.get(include=["metadatas", "documents"])
-
-            if not results or not results["metadatas"]:
+            embedding = _generate_embedding(query)
+            if not embedding:
                 return []
 
-            # Convertir en liste de dicts avec usage_count
+            sql = text(
+                """
+                SELECT id, content, metadata, embedding <=> :emb AS distance
+                FROM learning_memories
+                WHERE collection = 'ai_patterns'
+                ORDER BY embedding <=> :emb
+                LIMIT :limit
+            """
+            )
+            rows = db.execute(sql, {"emb": str(embedding), "limit": n_results}).fetchall()
+
             patterns = []
-            for i, metadata in enumerate(results["metadatas"]):
-                pattern = {
-                    "pattern": results["documents"][i],
-                    "problem_type": metadata.get("problem_type", ""),
-                    "solution_steps": json.loads(metadata.get("solution_steps", "[]")),
-                    "tools_sequence": json.loads(metadata.get("tools_sequence", "[]")),
-                    "success_rate": metadata.get("success_rate", 0.0),
-                    "usage_count": metadata.get("usage_count", 0),
-                    "created_at": metadata.get("created_at", ""),
-                }
-                patterns.append(pattern)
+            for row in rows:
+                meta = json.loads(row.metadata) if row.metadata else {}
+                patterns.append(
+                    {
+                        "problem_type": meta.get("problem_type", ""),
+                        "solution_steps": meta.get("solution_steps", []),
+                        "tools_sequence": meta.get("tools_sequence", []),
+                        "success_rate": meta.get("success_rate", 0.0),
+                        "usage_count": meta.get("usage_count", 0),
+                        "relevance": 1 - row.distance if row.distance else 0,
+                    }
+                )
 
-            # Trier par usage_count descendant
-            patterns.sort(key=lambda x: x["usage_count"], reverse=True)
-
-            return patterns[:limit]
-
+            return patterns
         except Exception as e:
-            logger.error(f"Erreur get_top_patterns: {e}")
+            logger.error(f"Error searching patterns: {e}")
             return []
+        finally:
+            db.close()
+
+    def get_top_patterns(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Recupere les patterns les plus utilises."""
+        if not self.connected:
+            return []
+
+        db = self._get_db()
+        try:
+            rows = db.query(LearningMemoryModel).filter_by(collection="ai_patterns").all()
+
+            patterns = []
+            for row in rows:
+                meta = json.loads(row.metadata_) if row.metadata_ else {}
+                patterns.append(
+                    {
+                        "pattern": row.content,
+                        "problem_type": meta.get("problem_type", ""),
+                        "solution_steps": meta.get("solution_steps", []),
+                        "tools_sequence": meta.get("tools_sequence", []),
+                        "success_rate": meta.get("success_rate", 0.0),
+                        "usage_count": meta.get("usage_count", 0),
+                        "created_at": row.created_at.isoformat() if row.created_at else "",
+                    }
+                )
+
+            patterns.sort(key=lambda x: x["usage_count"], reverse=True)
+            return patterns[:limit]
+        except Exception as e:
+            logger.error(f"Error get_top_patterns: {e}")
+            return []
+        finally:
+            db.close()
 
     # ==================== CORRECTIONS ====================
 
@@ -365,25 +324,12 @@ class LearningMemory:
         failed_approach: str,
         successful_correction: str,
         context: str,
-    ) -> str:
-        """
-        Stocke une correction d'erreur pour apprentissage.
-
-        Args:
-            error_type: Type d'erreur (ex: "command_not_found", "permission_denied")
-            error_message: Message d'erreur original
-            failed_approach: Approche qui a échoué
-            successful_correction: Correction qui a fonctionné
-            context: Contexte de l'erreur
-
-        Returns:
-            ID de la correction
-        """
-        if not self.client:
+    ) -> Optional[str]:
+        """Stocke une correction d'erreur pour apprentissage."""
+        if not self.connected:
             return None
 
         corr_id = self._generate_id(f"{error_type}{error_message[:100]}")
-
         document = f"Error: {error_type}\nMessage: {error_message}\nFailed: {failed_approach}\nCorrection: {successful_correction}"
 
         metadata = {
@@ -392,68 +338,82 @@ class LearningMemory:
             "failed_approach": failed_approach[:500],
             "successful_correction": successful_correction[:1000],
             "context": context[:500],
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "times_used": 1,
         }
 
+        db = self._get_db()
         try:
-            self.corrections.add(ids=[corr_id], documents=[document], metadatas=[metadata])
-            logger.info(f"Correction stockée: {error_type}")
+            embedding = _generate_embedding(document)
+            entry = LearningMemoryModel(
+                id=corr_id,
+                collection="ai_corrections",
+                content=document,
+                metadata_=json.dumps(metadata),
+                embedding=embedding,
+            )
+            db.add(entry)
+            db.commit()
+            logger.info(f"Correction stored: {error_type}")
             return corr_id
         except Exception as e:
-            logger.error(f"Erreur stockage correction: {e}")
+            db.rollback()
+            logger.error(f"Error storing correction: {e}")
             return None
+        finally:
+            db.close()
 
     def get_correction_for_error(
         self, error_message: str, context: str = ""
     ) -> Optional[Dict[str, Any]]:
-        """
-        Trouve une correction pour une erreur similaire.
-
-        Args:
-            error_message: Message d'erreur
-            context: Contexte optionnel
-
-        Returns:
-            Correction trouvée ou None
-        """
-        if not self.client:
+        """Trouve une correction pour une erreur similaire via recherche vectorielle."""
+        if not self.connected:
             return None
 
+        db = self._get_db()
         try:
-            query = f"{error_message} {context}"
-            results = self.corrections.query(query_texts=[query], n_results=1)
+            query_text = f"{error_message} {context}"
+            embedding = _generate_embedding(query_text)
+            if not embedding:
+                return None
 
-            if results and results["metadatas"] and results["metadatas"][0]:
-                metadata = results["metadatas"][0][0]
-                distance = results["distances"][0][0] if results["distances"] else 1
+            sql = text(
+                """
+                SELECT id, metadata, embedding <=> :emb AS distance
+                FROM learning_memories
+                WHERE collection = 'ai_corrections'
+                ORDER BY embedding <=> :emb
+                LIMIT 1
+            """
+            )
+            row = db.execute(sql, {"emb": str(embedding)}).fetchone()
 
-                # Seulement si la correspondance est bonne (distance < 0.5)
-                if distance < 0.5:
-                    return {
-                        "error_type": metadata.get("error_type", ""),
-                        "successful_correction": metadata.get("successful_correction", ""),
-                        "context": metadata.get("context", ""),
-                        "relevance": 1 - distance,
-                    }
+            if row and row.distance < 0.5:
+                meta = json.loads(row.metadata) if row.metadata else {}
+                return {
+                    "error_type": meta.get("error_type", ""),
+                    "successful_correction": meta.get("successful_correction", ""),
+                    "context": meta.get("context", ""),
+                    "relevance": 1 - row.distance,
+                }
 
             return None
-
         except Exception as e:
-            logger.error(f"Erreur recherche correction: {e}")
+            logger.error(f"Error searching correction: {e}")
             return None
+        finally:
+            db.close()
 
     # ==================== CONTEXTE UTILISATEUR ====================
 
     def store_user_preference(
         self, user_id: str, preference_type: str, preference_value: str, context: str = ""
     ):
-        """Stocke une préférence utilisateur."""
-        if not self.client:
+        """Stocke une preference utilisateur."""
+        if not self.connected:
             return
 
         pref_id = self._generate_id(f"{user_id}{preference_type}")
-
         document = f"User preference: {preference_type} = {preference_value}"
 
         metadata = {
@@ -461,74 +421,102 @@ class LearningMemory:
             "preference_type": preference_type,
             "preference_value": preference_value,
             "context": context,
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
+        db = self._get_db()
         try:
-            # Upsert
-            existing = self.user_context.get(ids=[pref_id])
-            if existing and existing["ids"]:
-                self.user_context.update(ids=[pref_id], documents=[document], metadatas=[metadata])
+            existing = db.query(LearningMemoryModel).filter_by(id=pref_id).first()
+            if existing:
+                existing.content = document
+                existing.metadata_ = json.dumps(metadata)
+                existing.updated_at = datetime.now(timezone.utc)
             else:
-                self.user_context.add(ids=[pref_id], documents=[document], metadatas=[metadata])
+                entry = LearningMemoryModel(
+                    id=pref_id,
+                    collection="ai_user_context",
+                    content=document,
+                    metadata_=json.dumps(metadata),
+                )
+                db.add(entry)
+
+            db.commit()
         except Exception as e:
-            logger.error(f"Erreur stockage préférence: {e}")
+            db.rollback()
+            logger.error(f"Error storing preference: {e}")
+        finally:
+            db.close()
 
     def get_user_context(self, user_id: str) -> Dict[str, Any]:
-        """Récupère le contexte utilisateur."""
-        if not self.client:
+        """Recupere le contexte utilisateur."""
+        if not self.connected:
             return {}
 
+        db = self._get_db()
         try:
-            results = self.user_context.get(where={"user_id": user_id})
+            rows = db.query(LearningMemoryModel).filter_by(collection="ai_user_context").all()
 
             context = {}
-            if results and results["metadatas"]:
-                for metadata in results["metadatas"]:
-                    pref_type = metadata.get("preference_type", "")
-                    pref_value = metadata.get("preference_value", "")
+            for row in rows:
+                meta = json.loads(row.metadata_) if row.metadata_ else {}
+                if meta.get("user_id") == user_id:
+                    pref_type = meta.get("preference_type", "")
+                    pref_value = meta.get("preference_value", "")
                     if pref_type:
                         context[pref_type] = pref_value
 
             return context
-
         except Exception as e:
-            logger.error(f"Erreur récupération contexte: {e}")
+            logger.error(f"Error retrieving context: {e}")
             return {}
+        finally:
+            db.close()
 
     # ==================== STATS ====================
 
     def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques de la mémoire."""
-        if not self.client:
+        """Retourne les statistiques de la memoire."""
+        if not self.connected:
             return {"status": "disconnected"}
 
+        db = self._get_db()
         try:
+
+            def _count(collection: str) -> int:
+                return db.query(LearningMemoryModel).filter_by(collection=collection).count()
+
             return {
                 "status": "connected",
-                "experiences_count": self.experiences.count(),
-                "patterns_count": self.patterns.count(),
-                "corrections_count": self.corrections.count(),
-                "user_contexts_count": self.user_context.count(),
+                "experiences_count": _count("ai_experiences"),
+                "patterns_count": _count("ai_patterns"),
+                "corrections_count": _count("ai_corrections"),
+                "user_contexts_count": _count("ai_user_context"),
             }
         except Exception as e:
             return {"status": "error", "error": str(e)}
+        finally:
+            db.close()
 
     def update_experience_score(self, exp_id: str, score_delta: float):
-        """Met à jour le score d'une expérience (feedback)."""
-        if not self.client:
+        """Met a jour le score d'une experience (feedback)."""
+        if not self.connected:
             return
 
+        db = self._get_db()
         try:
-            existing = self.experiences.get(ids=[exp_id])
-            if existing and existing["metadatas"]:
-                metadata = existing["metadatas"][0]
-                new_score = max(0, min(1, metadata.get("score", 0.5) + score_delta))
-                metadata["score"] = new_score
-                self.experiences.update(ids=[exp_id], metadatas=[metadata])
-                logger.info(f"Score mis à jour: {exp_id} -> {new_score}")
+            entry = db.query(LearningMemoryModel).filter_by(id=exp_id).first()
+            if entry and entry.metadata_:
+                meta = json.loads(entry.metadata_)
+                new_score = max(0, min(1, meta.get("score", 0.5) + score_delta))
+                meta["score"] = new_score
+                entry.metadata_ = json.dumps(meta)
+                db.commit()
+                logger.info(f"Score updated: {exp_id} -> {new_score}")
         except Exception as e:
-            logger.error(f"Erreur mise à jour score: {e}")
+            db.rollback()
+            logger.error(f"Error updating score: {e}")
+        finally:
+            db.close()
 
 
 # Instance singleton
@@ -539,7 +527,5 @@ def get_learning_memory() -> LearningMemory:
     """Retourne l'instance singleton de LearningMemory."""
     global _learning_memory
     if _learning_memory is None:
-        chroma_host = os.getenv("CHROMA_HOST", "localhost")
-        chroma_port = int(os.getenv("CHROMA_PORT", "8000"))
-        _learning_memory = LearningMemory(chroma_host=chroma_host, chroma_port=chroma_port)
+        _learning_memory = LearningMemory()
     return _learning_memory

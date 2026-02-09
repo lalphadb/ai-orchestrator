@@ -5,6 +5,9 @@ System routes - Status, stats, models
 import time
 
 import psutil
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.database import Conversation, Message, get_db
 from app.core.security import get_current_user, get_current_user_optional
@@ -12,8 +15,6 @@ from app.models import ModelInfo, ModelsResponse, SystemStats
 from app.services.ollama.categorizer import CATEGORY_INFO, categorize_models
 from app.services.ollama.client import ollama_client
 from app.services.react_engine.tools import BUILTIN_TOOLS
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/system")
 
@@ -64,13 +65,13 @@ async def health(
         "api": {"status": "ok", "message": "API responding"},
         "database": {"status": "unknown", "details": {}},
         "ollama": {"status": "unknown", "details": {}},
-        "chromadb": {"status": "unknown", "details": {}},
+        "learning_memory": {"status": "unknown", "details": {}},
         "workspace": {"status": "unknown", "details": {}},
     }
 
     all_ok = True
 
-    # 1. Database check (SQLite)
+    # 1. Database check (PostgreSQL)
     try:
         from sqlalchemy import text
 
@@ -91,7 +92,7 @@ async def health(
                 "users": user_count,
                 "conversations": conv_count,
                 "messages": msg_count,
-                "type": "SQLite",
+                "type": "PostgreSQL",
             },
         }
     except Exception as e:
@@ -147,39 +148,35 @@ async def health(
         }
         all_ok = False
 
-    # 3. ChromaDB check
+    # 3. Learning memory check (PostgreSQL + pgvector)
     try:
-        from app.services.learning.memory import LearningMemory
+        from app.services.learning.memory import get_learning_memory
 
-        memory = LearningMemory()
+        memory = get_learning_memory()
+        stats = memory.get_stats()
 
-        # Vérifier connexion et compter feedbacks
-        if memory.client and memory.experiences:
-            feedback_count = memory.experiences.count()
-
-            checks["chromadb"] = {
+        if stats.get("status") == "connected":
+            checks["learning_memory"] = {
                 "status": "ok",
-                "message": "ChromaDB accessible",
+                "message": "Learning memory accessible (PostgreSQL + pgvector)",
                 "details": {
-                    "feedback_count": feedback_count,
-                    "host": memory.chroma_host,
-                    "port": memory.chroma_port,
+                    "experiences_count": stats.get("experiences_count", 0),
+                    "patterns_count": stats.get("patterns_count", 0),
                 },
             }
         else:
-            checks["chromadb"] = {
+            checks["learning_memory"] = {
                 "status": "warning",
-                "message": "ChromaDB not initialized",
+                "message": "Learning memory not connected",
                 "details": {},
             }
     except Exception as e:
-        checks["chromadb"] = {
+        checks["learning_memory"] = {
             "status": "error",
-            "message": "ChromaDB check failed",
+            "message": "Learning memory check failed",
             "details": {},
         }
-        # ChromaDB non-critique, ne met pas all_ok à False
-        # all_ok = False
+        # Non-critical, don't set all_ok to False
 
     # 4. Workspace check (permissions + espace disque)
     try:

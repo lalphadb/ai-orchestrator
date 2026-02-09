@@ -29,21 +29,30 @@ def log_action(
 
     Args:
         action: Type d'action (tool_execute, login, file_access, etc.)
-        resource: Ressource concernée (chemin fichier, nom outil, etc.)
-        allowed: Action autorisée ou refusée
-        role: Rôle de l'utilisateur (VIEWER, OPERATOR, ADMIN)
-        command: Commande exécutée (si applicable)
-        parameters: Paramètres de l'action (dict converti en JSON)
-        result: Résultat ou message d'erreur
+        resource: Ressource concernee
+        allowed: Action autorisee ou refusee
+        role: Role de l'utilisateur (VIEWER, OPERATOR, ADMIN)
+        command: Commande executee (si applicable)
+        parameters: Parametres de l'action (dict converti en JSON)
+        result: Resultat ou message d'erreur
         user_id: ID utilisateur
         ip_address: Adresse IP
         user_agent: User-Agent du client
 
     Returns:
-        True si succès, False sinon
+        True si succes, False sinon
     """
     try:
         db = get_db_session()
+
+        # Merge command, parameters, result into details JSONB
+        details = {}
+        if command:
+            details["command"] = command
+        if parameters:
+            details["parameters"] = parameters
+        if result:
+            details["result"] = result[:1000]
 
         audit_entry = AuditLog(
             timestamp=datetime.now(timezone.utc),
@@ -52,9 +61,7 @@ def log_action(
             resource=resource,
             allowed=allowed,
             role=role,
-            command=command,
-            parameters=json.dumps(parameters) if parameters else None,
-            result=result[:1000] if result else None,  # Limiter la taille
+            details=json.dumps(details) if details else None,
             ip_address=ip_address,
             user_agent=user_agent[:255] if user_agent else None,
         )
@@ -78,7 +85,7 @@ def get_audit_logs(
     limit: int = 100,
 ) -> list:
     """
-    Récupère les logs d'audit avec filtres optionnels.
+    Recupere les logs d'audit avec filtres optionnels.
     """
     try:
         db = get_db_session()
@@ -103,7 +110,7 @@ def get_audit_logs(
                 "resource": log.resource,
                 "allowed": log.allowed,
                 "role": log.role,
-                "command": log.command,
+                "details": json.loads(log.details) if log.details else {},
             }
             for log in logs
         ]

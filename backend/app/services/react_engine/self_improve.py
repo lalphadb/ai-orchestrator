@@ -6,7 +6,7 @@ Auto-amélioration contrôlée du système avec:
 - Génération de patches
 - Validation QA obligatoire
 - Rollback automatique en cas d'échec
-- Stockage des améliorations dans ChromaDB
+- Stockage des améliorations dans PostgreSQL (pgvector)
 """
 
 import json
@@ -40,7 +40,7 @@ class SelfImproveResult:
         self.patches: List[Dict[str, Any]] = []
         self.qa_results: Dict[str, Any] = {}
         self.rollback_info: Optional[Dict[str, Any]] = None
-        self.chromadb_id: Optional[str] = None
+        self.memory_id: Optional[str] = None
         self.error: Optional[str] = None
         self.started_at: datetime = datetime.now(timezone.utc)
         self.completed_at: Optional[datetime] = None
@@ -53,7 +53,7 @@ class SelfImproveResult:
             "patches": self.patches,
             "qa_results": self.qa_results,
             "rollback_info": self.rollback_info,
-            "chromadb_id": self.chromadb_id,
+            "memory_id": self.memory_id,
             "error": self.error,
             "started_at": self.started_at.isoformat(),
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
@@ -68,7 +68,7 @@ class SelfImproveEngine:
     1. ANALYZE: Analyse des logs, feedback, et métriques
     2. PATCH: Génération et application de patches
     3. VERIFY: Validation QA (tests, lint)
-    4. STORE: Stockage dans ChromaDB si succès
+    4. STORE: Stockage dans PostgreSQL si succes
     5. ROLLBACK: Annulation si échec
     """
 
@@ -203,13 +203,13 @@ Génère le code corrigé COMPLET. Réponds UNIQUEMENT avec le nouveau contenu d
                 result.error = "QA verification failed, changes rolled back"
                 logger.warning(f"[SELF_IMPROVE] Rolled back due to QA failure")
             else:
-                # PHASE 4: STORE in ChromaDB
+                # PHASE 4: STORE in memory (PostgreSQL)
                 result.status = "storing"
 
-                chromadb_id = await self._store_in_memory(result)
-                result.chromadb_id = chromadb_id
+                memory_id = await self._store_in_memory(result)
+                result.memory_id = memory_id
                 result.status = "complete"
-                logger.info(f"[SELF_IMPROVE] Success, stored as {chromadb_id}")
+                logger.info(f"[SELF_IMPROVE] Success, stored as {memory_id}")
 
             result.completed_at = datetime.now(timezone.utc)
             return result
@@ -359,7 +359,7 @@ Génère le code corrigé COMPLET. Réponds UNIQUEMENT avec le nouveau contenu d
         return {"restored": restored, "failed": failed}
 
     async def _store_in_memory(self, result: SelfImproveResult) -> Optional[str]:
-        """Stocke le résumé de l'amélioration dans ChromaDB."""
+        """Stocke le resume de l'amelioration dans la memoire PostgreSQL."""
         try:
             from app.services.react_engine.tools import memory_store
 

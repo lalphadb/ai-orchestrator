@@ -1,18 +1,22 @@
-"""Configuration pytest pour AI Orchestrator v6.1"""
+"""Configuration pytest pour AI Orchestrator v8.2.0"""
 
 import os
 import sys
 from pathlib import Path
 
-# CRITICAL: Définir TESTING=1 AVANT tout import pour désactiver slowapi
+# CRITICAL: Set TESTING=1 BEFORE any import to disable slowapi
 os.environ["TESTING"] = "1"
+# Use test PostgreSQL database
+os.environ["DATABASE_URL"] = (
+    "postgresql://lalpha:lalpha2024secure@127.0.0.1:5432/ai_orchestrator_test"
+)
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Ajouter le backend au path
+# Add backend to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
@@ -26,7 +30,7 @@ def workspace_dir():
 
 @pytest.fixture
 def test_file(workspace_dir, tmp_path):
-    """Crée un fichier de test temporaire dans le workspace"""
+    """Cree un fichier de test temporaire dans le workspace"""
     from pathlib import Path
 
     test_path = Path(workspace_dir) / "pytest_temp.txt"
@@ -39,11 +43,11 @@ def test_file(workspace_dir, tmp_path):
 # Fixtures pour tests API
 @pytest.fixture(scope="function")
 def db_session():
-    """Créer session DB test en mémoire"""
-    from app.core.database import Base, get_db
+    """Create test DB session using PostgreSQL test database"""
+    from app.core.database import Base
 
-    SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+    TEST_DATABASE_URL = "postgresql://lalpha:lalpha2024secure@127.0.0.1:5432/ai_orchestrator_test"
+    engine = create_engine(TEST_DATABASE_URL)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
     Base.metadata.create_all(bind=engine)
@@ -69,14 +73,13 @@ def client(db_session):
 
     app.dependency_overrides[get_db] = override_get_db
 
-    # Désactiver rate limiting pour les tests (slowapi incompatible avec TestClient)
-    # Remplacer la méthode limit() par une fonction identité
+    # Disable rate limiting for tests (slowapi incompatible with TestClient)
     original_limit = None
     if hasattr(app.state, "limiter"):
         original_limit = app.state.limiter.limit
 
         def no_op_limit(limit_value):
-            """Décorateur qui ne fait rien pendant les tests"""
+            """Decorator that does nothing during tests"""
 
             def decorator(func):
                 return func
@@ -87,7 +90,7 @@ def client(db_session):
 
     yield TestClient(app)
 
-    # Restaurer après les tests
+    # Restore after tests
     if hasattr(app.state, "limiter") and original_limit is not None:
         app.state.limiter.limit = original_limit
 
@@ -96,8 +99,8 @@ def client(db_session):
 
 @pytest.fixture
 def auth_headers(client: TestClient):
-    """Token JWT pour tests authentifiés"""
-    # Créer user test
+    """Token JWT pour tests authentifies"""
+    # Create test user
     response = client.post(
         "/api/v1/auth/register", json={"username": "testuser", "password": "testpass123"}
     )
