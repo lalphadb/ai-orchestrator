@@ -78,7 +78,7 @@ const routes = [
       {
         path: 'settings',
         name: 'v8-settings',
-        component: () => import('@/views/SettingsView.vue'),
+        component: () => import('@/views/v8/SettingsView.vue'),
       },
       {
         path: 'test-ui',
