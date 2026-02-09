@@ -95,7 +95,7 @@ async def register(
     # Générer le token
     token = create_access_token(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "username": user.username,
             "is_admin": user.is_admin,
         }
@@ -104,7 +104,7 @@ async def register(
     # Créer aussi le refresh token
     refresh_token = create_refresh_token(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "username": user.username,
         }
     )
@@ -145,7 +145,7 @@ async def login(
 
     token = create_access_token(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "username": user.username,
             "is_admin": user.is_admin,
         }
@@ -154,7 +154,7 @@ async def login(
     # Créer aussi le refresh token
     refresh_token = create_refresh_token(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "username": user.username,
         }
     )
@@ -206,7 +206,7 @@ async def refresh_access_token(
     # Nouveau access token
     new_access_token = create_access_token(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "username": user.username,
             "is_admin": user.is_admin,
         }
@@ -215,7 +215,7 @@ async def refresh_access_token(
     # Nouveau refresh token (rotation)
     new_refresh_token = create_refresh_token(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "username": user.username,
         }
     )

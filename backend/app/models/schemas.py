@@ -4,6 +4,7 @@ Pydantic schemas for request/response validation
 
 import json
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -42,7 +43,7 @@ class UserLogin(BaseModel):
 class UserResponse(BaseModel):
     """Réponse utilisateur"""
 
-    id: str
+    id: uuid.UUID
     username: str
     email: Optional[str] = None
     is_active: bool
