@@ -7,7 +7,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from typing_extensions import Annotated
+
+# UUID fields from PostgreSQL need coercion to str for Pydantic v2
+StrUUID = Annotated[str, BeforeValidator(lambda v: str(v) if v is not None else v)]
 
 
 class WorkflowPhase(str, Enum):
@@ -179,7 +183,7 @@ class WorkflowResponse(BaseModel):
 
     # Champs existants (compatibilité)
     response: str
-    conversation_id: Optional[str] = None
+    conversation_id: Optional[StrUUID] = None
     model_used: str
     tools_used: List[Dict[str, Any]] = []
     iterations: int = 0

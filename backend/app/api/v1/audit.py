@@ -6,7 +6,10 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict
+from typing_extensions import Annotated
+
+StrUUID = Annotated[str, BeforeValidator(lambda v: str(v) if v is not None else v)]
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -25,7 +28,7 @@ class AuditLogResponse(BaseModel):
 
     id: int
     timestamp: datetime
-    user_id: str | None = None
+    user_id: StrUUID | None = None
     action: str
     resource: str | None = None
     allowed: bool

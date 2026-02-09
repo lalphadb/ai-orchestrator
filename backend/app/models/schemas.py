@@ -8,8 +8,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import (BaseModel, ConfigDict, EmailStr, Field, ValidationError,
-                      field_validator)
+from pydantic import (BaseModel, BeforeValidator, ConfigDict, EmailStr, Field,
+                      ValidationError, field_validator)
+from typing_extensions import Annotated
+
+# UUID fields from PostgreSQL need coercion to str for Pydantic v2
+StrUUID = Annotated[str, BeforeValidator(lambda v: str(v) if v is not None else v)]
 
 # ===== AUTH SCHEMAS =====
 
@@ -43,7 +47,7 @@ class UserLogin(BaseModel):
 class UserResponse(BaseModel):
     """Réponse utilisateur"""
 
-    id: uuid.UUID
+    id: StrUUID
     username: str
     email: Optional[str] = None
     is_active: bool
@@ -124,7 +128,7 @@ class MessageResponse(BaseModel):
 class ConversationResponse(BaseModel):
     """Réponse conversation"""
 
-    id: str
+    id: StrUUID
     title: str
     model: Optional[str] = None
     messages: List[MessageResponse] = []
@@ -199,7 +203,7 @@ class ChatResponse(BaseModel):
     """Réponse de chat"""
 
     response: str
-    conversation_id: str
+    conversation_id: StrUUID
     model_used: str
     tools_used: List[ToolExecution] = []
     iterations: int = 0
