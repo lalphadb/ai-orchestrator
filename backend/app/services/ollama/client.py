@@ -229,7 +229,7 @@ class OllamaClient:
             logger.error(f"Ollama chat stream failed: {e}")
             yield f"[Erreur: {str(e)}]"
 
-    async def embeddings(self, text: str, model: str = "nomic-embed-text") -> List[float]:
+    async def embeddings(self, text: str, model: str = "bge-m3") -> List[float]:
         """Génère des embeddings pour un texte"""
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
