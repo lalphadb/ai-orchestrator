@@ -7,27 +7,11 @@ const routes = [
     path: '/',
     redirect: '/v8/dashboard',
   },
-  // Main Chat (v7.1 compatible - legacy)
-  {
-    path: '/v7',
-    name: 'chat',
-    component: () => import('@/views/ChatView.vue'),
-  },
-  {
-    path: '/tools',
-    name: 'tools',
-    component: () => import('@/views/ToolsView.vue'),
-  },
-  {
-    path: '/settings',
-    name: 'settings',
-    component: () => import('@/views/SettingsView.vue'),
-  },
-  {
-    path: '/learning',
-    name: 'learning',
-    component: () => import('@/views/LearningView.vue'),
-  },
+  // Legacy redirects → v8 equivalents
+  { path: '/v7', redirect: '/v8/chat' },
+  { path: '/tools', redirect: '/v8/tools' },
+  { path: '/settings', redirect: '/v8/settings' },
+  { path: '/learning', redirect: '/v8/memory' },
   {
     path: '/login',
     name: 'login',

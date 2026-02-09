@@ -23,7 +23,7 @@ scrape_configs:
   # 2. TRAEFIK MÉTRIQUES (IP directe)
   - job_name: 'traefik'
     static_configs:
-      - targets: ['10.10.10.46:8080']
+      - targets: ['traefik:8080']
     metrics_path: '/metrics'
 
   # 3. AI-ORCHESTRATOR BACKEND
