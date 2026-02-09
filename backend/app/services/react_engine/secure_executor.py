@@ -1,5 +1,5 @@
 """
-Secure Command Executor - AI Orchestrator v7
+Secure Command Executor - AI Orchestrator v8
 Exécution sécurisée de commandes avec argv explicite (JAMAIS shell=True)
 
 Principes de sécurité:
