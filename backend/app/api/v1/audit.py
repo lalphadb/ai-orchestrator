@@ -4,6 +4,7 @@ Audit routes - Logs de sécurité et audit des actions
 
 import logging
 from datetime import datetime
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, BeforeValidator, ConfigDict
@@ -33,7 +34,7 @@ class AuditLogResponse(BaseModel):
     resource: str | None = None
     allowed: bool
     role: str | None = None
-    details: str | None = None
+    details: Optional[Dict[str, Any]] = None
 
 
 class AuditStatsResponse(BaseModel):
