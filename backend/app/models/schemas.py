@@ -111,7 +111,7 @@ class MessageResponse(BaseModel):
     @field_validator("tools_used", mode="before")
     @classmethod
     def parse_tools_used(cls, v):
-        """Deserialize tools_used if it's a JSON string"""
+        """Deserialize tools_used if it's a JSON string or pass list through"""
         if v is None or v == "":
             return None
         if isinstance(v, str):
@@ -120,6 +120,18 @@ class MessageResponse(BaseModel):
                 return parsed if parsed else None
             except (json.JSONDecodeError, ValueError):
                 return None
+        if isinstance(v, list):
+            return v if v else None
+        return v
+
+    @field_validator("thinking", mode="before")
+    @classmethod
+    def parse_thinking(cls, v):
+        """Extract thinking trace from jsonb dict or pass string through"""
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            return v.get("trace", "")
         return v
 
     model_config = ConfigDict(from_attributes=True)

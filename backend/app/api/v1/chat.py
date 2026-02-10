@@ -9,6 +9,12 @@ import os
 import time
 from collections import defaultdict
 
+from fastapi import (APIRouter, Depends, HTTPException, Query, Request,
+                     WebSocket, WebSocketDisconnect)
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy.orm import Session
+
 from app.core.config import settings
 from app.core.database import Conversation, Message, get_db
 from app.core.security import generate_uuid, get_current_user_optional
@@ -16,11 +22,6 @@ from app.models import ChatRequest, ChatResponse
 from app.models.workflow import WorkflowResponse
 from app.services.react_engine.workflow_engine import workflow_engine
 from app.services.websocket.event_emitter import event_emitter
-from fastapi import (APIRouter, Depends, HTTPException, Query, Request,
-                     WebSocket, WebSocketDisconnect)
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/chat")
 
@@ -139,8 +140,8 @@ async def chat(
         role="assistant",
         content=result.response,
         model=result.model_used,
-        tools_used=json.dumps(tools_names),
-        thinking=result.thinking,
+        tools_used=tools_names,
+        thinking={"trace": result.thinking} if result.thinking else None,
     )
     db.add(assistant_message)
     db.commit()
@@ -263,7 +264,10 @@ async def websocket_chat(
                 conversation_id = conversation.id
 
                 await event_emitter.emit(
-                    websocket, "conversation_created", run_id, {"conversation_id": conversation_id}
+                    websocket,
+                    "conversation_created",
+                    run_id,
+                    {"conversation_id": str(conversation_id)},
                 )
 
             # Sauvegarder message user
@@ -314,8 +318,8 @@ async def websocket_chat(
                 role="assistant",
                 content=result.response,
                 model=result.model_used,
-                tools_used=json.dumps(tools_names),
-                thinking=result.thinking,
+                tools_used=tools_names,
+                thinking={"trace": result.thinking} if result.thinking else None,
             )
             db.add(assistant_msg)
             db.commit()
@@ -552,8 +556,8 @@ Réponds directement avec la version améliorée."""
             role="assistant",
             content=result.response,
             model=result.model_used,
-            tools_used=json.dumps(tools_names),
-            thinking=result.thinking,
+            tools_used=tools_names,
+            thinking={"trace": result.thinking} if result.thinking else None,
         )
         db.add(repair_msg)
         db.commit()
@@ -655,7 +659,7 @@ async def chat_simple(
         role="assistant",
         content=result.response,
         model=result.model_used,
-        tools_used=json.dumps(tools_names),
+        tools_used=tools_names,
     )
     db.add(assistant_msg)
     db.commit()

@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from typing import Generator
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import (Boolean, Column, DateTime, ForeignKey, Index, Integer,
-                        String, Text, create_engine)
+from sqlalchemy import (JSON, Boolean, Column, DateTime, ForeignKey, Index,
+                        Integer, String, Text, create_engine)
 from sqlalchemy.orm import (Session, declarative_base, relationship,
                             sessionmaker)
 
@@ -80,8 +80,8 @@ class Message(Base):
     role = Column(String(20), nullable=False)  # user, assistant, system
     content = Column(Text, nullable=False)
     model = Column(String(100), nullable=True)
-    tools_used = Column(Text, nullable=True)  # JSON list
-    thinking = Column(Text, nullable=True)  # JSON object
+    tools_used = Column(JSON, nullable=True)  # jsonb list
+    thinking = Column(JSON, nullable=True)  # jsonb object
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
     # Relations
@@ -121,8 +121,8 @@ class Feedback(Base):
 
     feedback_type = Column(String(20), nullable=False)  # positive, negative, correction
     context = Column(
-        Text, nullable=True
-    )  # JSON: query, response, corrected_response, tools_used, reason
+        JSON, nullable=True
+    )  # jsonb: query, response, corrected_response, tools_used, reason
 
     created_at = Column(DateTime(timezone=True), default=_utcnow, index=True)
 
@@ -150,7 +150,7 @@ class AuditLog(Base):
     role = Column(String(50), nullable=True)
 
     # Details (JSONB in PostgreSQL): command, parameters, result merged
-    details = Column(Text, nullable=True)  # JSON
+    details = Column(JSON, nullable=True)  # jsonb
 
     # Contexte
     ip_address = Column(String(45), nullable=True)
@@ -165,7 +165,7 @@ class LearningMemory(Base):
     id = Column(String(36), primary_key=True)
     collection = Column(String(50), nullable=False, index=True)
     content = Column(Text, nullable=False)
-    metadata_ = Column("metadata", Text, nullable=True)  # JSON - renamed to avoid conflict
+    metadata_ = Column("metadata", JSON, nullable=True)  # jsonb - renamed to avoid conflict
     embedding = Column(Vector(1024), nullable=True)
     created_at = Column(DateTime(timezone=True), default=_utcnow)
     updated_at = Column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)

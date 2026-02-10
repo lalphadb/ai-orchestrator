@@ -61,7 +61,7 @@ def log_action(
             resource=resource,
             allowed=allowed,
             role=role,
-            details=json.dumps(details) if details else None,
+            details=details if details else None,
             ip_address=ip_address,
             user_agent=user_agent[:255] if user_agent else None,
         )
@@ -110,7 +110,7 @@ def get_audit_logs(
                 "resource": log.resource,
                 "allowed": log.allowed,
                 "role": log.role,
-                "details": json.loads(log.details) if log.details else {},
+                "details": log.details if log.details else {},
             }
             for log in logs
         ]

@@ -16,10 +16,9 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy.orm import Session
-
 from app.core.database import Feedback as FeedbackModel
 from app.core.database import get_db_session
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +49,8 @@ class Feedback:
 def _parse_context(feedback_model: FeedbackModel) -> Dict[str, Any]:
     """Parse the context JSON field from a Feedback model."""
     if feedback_model.context:
+        if isinstance(feedback_model.context, dict):
+            return feedback_model.context
         try:
             return json.loads(feedback_model.context)
         except (json.JSONDecodeError, TypeError):
@@ -96,7 +97,7 @@ class FeedbackCollector:
             conversation_id=conversation_id,
             user_id=user_id,
             feedback_type=feedback_type.value,
-            context=json.dumps(context),
+            context=context,
         )
 
         db.add(feedback_db)

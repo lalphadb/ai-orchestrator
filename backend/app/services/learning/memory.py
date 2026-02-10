@@ -15,12 +15,11 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.core.database import LearningMemory as LearningMemoryModel
 from app.core.database import SessionLocal
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +119,7 @@ class LearningMemory:
                 id=exp_id,
                 collection="ai_experiences",
                 content=document,
-                metadata_=json.dumps(metadata),
+                metadata_=metadata,
                 embedding=embedding,
             )
             db.add(entry)
@@ -215,9 +214,9 @@ class LearningMemory:
         try:
             existing = db.query(LearningMemoryModel).filter_by(id=pattern_id).first()
             if existing:
-                old_meta = json.loads(existing.metadata_) if existing.metadata_ else {}
+                old_meta = existing.metadata_ if existing.metadata_ else {}
                 metadata["usage_count"] = old_meta.get("usage_count", 0) + 1
-                existing.metadata_ = json.dumps(metadata)
+                existing.metadata_ = metadata
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 embedding = _generate_embedding(document)
@@ -225,7 +224,7 @@ class LearningMemory:
                     id=pattern_id,
                     collection="ai_patterns",
                     content=document,
-                    metadata_=json.dumps(metadata),
+                    metadata_=metadata,
                     embedding=embedding,
                 )
                 db.add(entry)
@@ -294,7 +293,7 @@ class LearningMemory:
 
             patterns = []
             for row in rows:
-                meta = json.loads(row.metadata_) if row.metadata_ else {}
+                meta = row.metadata_ if row.metadata_ else {}
                 patterns.append(
                     {
                         "pattern": row.content,
@@ -349,7 +348,7 @@ class LearningMemory:
                 id=corr_id,
                 collection="ai_corrections",
                 content=document,
-                metadata_=json.dumps(metadata),
+                metadata_=metadata,
                 embedding=embedding,
             )
             db.add(entry)
@@ -429,14 +428,14 @@ class LearningMemory:
             existing = db.query(LearningMemoryModel).filter_by(id=pref_id).first()
             if existing:
                 existing.content = document
-                existing.metadata_ = json.dumps(metadata)
+                existing.metadata_ = metadata
                 existing.updated_at = datetime.now(timezone.utc)
             else:
                 entry = LearningMemoryModel(
                     id=pref_id,
                     collection="ai_user_context",
                     content=document,
-                    metadata_=json.dumps(metadata),
+                    metadata_=metadata,
                 )
                 db.add(entry)
 
@@ -458,7 +457,7 @@ class LearningMemory:
 
             context = {}
             for row in rows:
-                meta = json.loads(row.metadata_) if row.metadata_ else {}
+                meta = row.metadata_ if row.metadata_ else {}
                 if meta.get("user_id") == user_id:
                     pref_type = meta.get("preference_type", "")
                     pref_value = meta.get("preference_value", "")
@@ -506,10 +505,10 @@ class LearningMemory:
         try:
             entry = db.query(LearningMemoryModel).filter_by(id=exp_id).first()
             if entry and entry.metadata_:
-                meta = json.loads(entry.metadata_)
+                meta = entry.metadata_ if entry.metadata_ else {}
                 new_score = max(0, min(1, meta.get("score", 0.5) + score_delta))
                 meta["score"] = new_score
-                entry.metadata_ = json.dumps(meta)
+                entry.metadata_ = meta
                 db.commit()
                 logger.info(f"Score updated: {exp_id} -> {new_score}")
         except Exception as e:
