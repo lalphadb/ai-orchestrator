@@ -202,6 +202,12 @@ export const api = {
     return request('/auth/me')
   },
 
+  async refreshToken(refreshToken) {
+    return request(`/auth/refresh?refresh_token=${encodeURIComponent(refreshToken)}`, {
+      method: 'POST',
+    })
+  },
+
   // Conversations
   async getConversations() {
     return request('/conversations')

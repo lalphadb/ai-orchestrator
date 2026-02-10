@@ -317,19 +317,12 @@ class WSEventEmitter:
                 return False
 
         # Emit terminal event
-        # 🔍 DEBUG: Log before emit
-        logger.info(f"[DEBUG EventEmitter] Emitting terminal event '{event_type}' for run {run_id}")
-        logger.info(f"[DEBUG EventEmitter] Data keys: {list(data.keys())}")
-        logger.info(f"[DEBUG EventEmitter] Has response: {'response' in data}")
-        if "response" in data:
-            logger.info(
-                f"[DEBUG EventEmitter] Response length: {len(data['response']) if data['response'] else 0}"
-            )
+        logger.debug(f"Emitting terminal event '{event_type}' for run {run_id}")
+        logger.debug(f"Data keys: {list(data.keys())}, has response: {'response' in data}")
 
         result = await self.emit(websocket, event_type, run_id, data)
 
-        # 🔍 DEBUG: Log after emit
-        logger.info(f"[DEBUG EventEmitter] Terminal event sent: {result}")
+        logger.debug(f"Terminal event sent: {result}")
 
         # Schedule cleanup after 5 minutes
         if result:
@@ -363,7 +356,11 @@ class WSEventEmitter:
             await websocket.send_json(event_dict)
         except (RuntimeError, Exception) as e:
             error_msg = str(e)
-            if "WebSocket is not connected" in error_msg or "close message has been sent" in error_msg or "websocket.close" in error_msg.lower():
+            if (
+                "WebSocket is not connected" in error_msg
+                or "close message has been sent" in error_msg
+                or "websocket.close" in error_msg.lower()
+            ):
                 # CRQ-P1-5: Buffer dans queue si activé
                 if settings.ENABLE_EVENT_QUEUE and run_id:
                     await self.event_queue.enqueue(run_id, event_dict)

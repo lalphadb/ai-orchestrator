@@ -14,7 +14,7 @@ import json
 import logging
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
@@ -134,8 +134,10 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
         try:
             # Détecter si c'est une question simple (pas besoin de spec/plan)
             is_simple = self._is_simple_request(user_message)
-            logger.info(f"[DEBUG Workflow] Run {run_id}: is_simple={is_simple}, skip_spec={skip_spec}, model={model}")
-            logger.info(f"[DEBUG Workflow] Run {run_id}: message={user_message[:80]}")
+            logger.debug(
+                f"Run {run_id}: is_simple={is_simple}, skip_spec={skip_spec}, model={model}"
+            )
+            logger.debug(f"Run {run_id}: message={user_message[:80]}")
 
             if is_simple or skip_spec:
                 # Mode simplifié: exécuter directement
@@ -152,9 +154,11 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
                         },
                     )
 
-                logger.info(f"[DEBUG Workflow] Run {run_id}: calling _execute (simple path)")
+                logger.debug(f"Run {run_id}: calling _execute (simple path)")
                 execution = await self._execute(user_message, model, history, websocket, run_id)
-                logger.info(f"[DEBUG Workflow] Run {run_id}: _execute returned, response length={len(execution.response) if execution.response else 0}")
+                logger.debug(
+                    f"Run {run_id}: _execute returned, response length={len(execution.response) if execution.response else 0}"
+                )
                 state.execution = execution
 
                 # Quick check sans QA complet
@@ -300,7 +304,7 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
             state.phase = (
                 WorkflowPhase.COMPLETE if state.verdict.status == "PASS" else WorkflowPhase.FAILED
             )
-            state.completed_at = datetime.now()
+            state.completed_at = datetime.now(timezone.utc)
             state.total_duration_ms = int((time.time() - start_time) * 1000)
 
             # Construire la réponse
@@ -320,13 +324,8 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
                     "duration_ms": response.duration_ms,
                     "repair_cycles": response.repair_cycles,
                 }
-                # 🔍 DEBUG: Log before sending
-                logger.info(f"[DEBUG Backend] Sending 'complete' event for run {run_id}")
-                logger.info(
-                    f"[DEBUG Backend] Response length: {len(response.response) if response.response else 0}"
-                )
-                logger.info(
-                    f"[DEBUG Backend] Response preview: {response.response[:100] if response.response else 'EMPTY'}"
+                logger.debug(
+                    f"Sending 'complete' event for run {run_id}, response length: {len(response.response) if response.response else 0}"
                 )
 
                 await event_emitter.emit_terminal(

@@ -288,9 +288,10 @@ async def websocket_chat(
             # Exécuter via WorkflowEngine avec WebSocket
             # NOTE: workflow_engine.run() handles terminal events internally
             import logging as _logging
+
             _chat_logger = _logging.getLogger("app.api.v1.chat")
-            _chat_logger.info(f"[DEBUG Chat] Starting workflow for run {run_id}, message: {message[:80]}...")
-            _chat_logger.info(f"[DEBUG Chat] Model: {normalize_model(model)}, conv_id: {conversation_id}")
+            _chat_logger.debug(f"Starting workflow for run {run_id}, message: {message[:80]}...")
+            _chat_logger.debug(f"Model: {normalize_model(model)}, conv_id: {conversation_id}")
             result = await workflow_engine.run(
                 user_message=message,
                 conversation_id=conversation_id,
@@ -301,8 +302,10 @@ async def websocket_chat(
                 run_id=run_id,
             )
 
-            _chat_logger.info(f"[DEBUG Chat] Workflow completed for run {run_id}, response length: {len(result.response) if result.response else 0}")
-            
+            _chat_logger.debug(
+                f"Workflow completed for run {run_id}, response length: {len(result.response) if result.response else 0}"
+            )
+
             # Sauvegarder réponse
             tools_names = [t["tool"] for t in result.tools_used] if result.tools_used else []
 
@@ -319,19 +322,20 @@ async def websocket_chat(
 
     except WebSocketDisconnect:
         import logging as _logging
+
         _logging.getLogger("app.api.v1.chat").info("[DEBUG Chat] WebSocket disconnected")
     except Exception as e:
         import logging as _logging
         import traceback
+
         _chat_logger = _logging.getLogger("app.api.v1.chat")
         _chat_logger.error(f"[CRITICAL Chat] Unhandled exception in websocket_chat: {e}")
         _chat_logger.error(f"[CRITICAL Chat] Traceback: {traceback.format_exc()}")
         try:
             # Try to send proper v8 error terminal event
-            if 'run_id' in dir():
+            if "run_id" in dir():
                 await event_emitter.emit_terminal(
-                    websocket, "error", run_id,
-                    {"message": f"Erreur interne: {str(e)}"}
+                    websocket, "error", run_id, {"message": f"Erreur interne: {str(e)}"}
                 )
             else:
                 await websocket.send_json({"type": "error", "data": {"message": str(e)}})

@@ -152,19 +152,19 @@ export const useChatStore = defineStore('chat', () => {
       : currentConversation.value?.id || null
 
     // Check pending messages for matching conversation
-    // V8 FIX: For new conversations, pending.conversationId may be null, so match on:
+    // V8.2 FIX: Also check when convId is null (first event before conversation_created)
+    // Match on:
     //   1. Exact conversation match (pending.conversationId === convId)
     //   2. OR pending has no conversation (new conversation case)
-    if (convId) {
-      for (const pending of pendingMessages.value.values()) {
-        if (!pending.runId && (pending.conversationId === convId || !pending.conversationId)) {
-          pending.runId = runId
-          pending.userMsg.run_id = runId
-          pending.assistantMsg.run_id = runId
-          run = createRun(runId, convId, pending.userMsg, pending.assistantMsg)
-          pendingMessages.value.delete(pending.tempId)
-          return run
-        }
+    //   3. OR convId is null (event arrived before conversation_created)
+    for (const pending of pendingMessages.value.values()) {
+      if (!pending.runId && (!convId || pending.conversationId === convId || !pending.conversationId)) {
+        pending.runId = runId
+        pending.userMsg.run_id = runId
+        pending.assistantMsg.run_id = runId
+        run = createRun(runId, convId, pending.userMsg, pending.assistantMsg)
+        pendingMessages.value.delete(pending.tempId)
+        return run
       }
     }
 
@@ -619,6 +619,19 @@ export const useChatStore = defineStore('chat', () => {
         if (run && isPlaceholder) {
           run.conversation_id = convId
           run.status = RunStatus.RUNNING
+
+          // V8.2 FIX: Link pending message to get assistantMessageId if still null
+          if (run.assistantMessageId === null) {
+            const pending = Array.from(pendingMessages.value.values()).find(
+              (p) => !p.runId || p.runId === resolvedRunId
+            )
+            if (pending) {
+              run.messageId = pending.userMsg?.id || run.messageId
+              run.assistantMessageId = pending.assistantMsg?.id || run.assistantMessageId
+              pending.runId = resolvedRunId
+              pendingMessages.value.delete(pending.tempId)
+            }
+          }
 
           if (!runsByConversation.value.has(convId)) {
             runsByConversation.value.set(convId, new Set())

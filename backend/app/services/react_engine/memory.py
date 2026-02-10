@@ -14,7 +14,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -162,14 +162,14 @@ class DurableMemory:
         expiry = None
         if settings.ENABLE_MEMORY_CLEANUP:
             days = ttl_days if ttl_days is not None else settings.MEMORY_TTL_DAYS
-            expiry = datetime.now() + timedelta(days=days)
+            expiry = datetime.now(timezone.utc) + timedelta(days=days)
 
         if entry_id in self.entries:
             # Mise à jour
             entry = self.entries[entry_id]
             entry.value = value
             entry.description = description
-            entry.updated_at = datetime.now()
+            entry.updated_at = datetime.now(timezone.utc)
             if tags:
                 entry.tags = list(set(entry.tags + tags))
             entry.confidence = confidence
@@ -363,7 +363,7 @@ class DurableMemory:
         if not settings.ENABLE_MEMORY_CLEANUP:
             return 0
 
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         expired_ids = []
 
         for entry in self.entries.values():

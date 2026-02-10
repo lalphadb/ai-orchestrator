@@ -14,7 +14,7 @@ import logging
 import os
 import shutil
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -86,7 +86,9 @@ class GovernanceManager:
         """Génère un ID unique pour une action"""
         import uuid
 
-        return f"action_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        return (
+            f"action_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        )
 
     def classify_action(self, tool_name: str, params: Dict) -> ActionCategory:
         """
@@ -262,7 +264,7 @@ class GovernanceManager:
                 action.verification_result = {
                     "success": success,
                     "result": result,
-                    "verified_at": datetime.now().isoformat(),
+                    "verified_at": datetime.now(timezone.utc).isoformat(),
                 }
                 logger.info(f"[GOVERNANCE] Résultat enregistré: {action_id} -> {success}")
                 break

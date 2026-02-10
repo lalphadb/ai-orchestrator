@@ -8,7 +8,7 @@ import logging
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
@@ -152,7 +152,7 @@ Date actuelle: {datetime}
 
         system_prompt = self.SYSTEM_PROMPT.format(
             tools=self._build_tools_description(),
-            datetime=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            datetime=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         )
 
         # === FIX: Construire le contexte conversationnel ===
@@ -177,8 +177,10 @@ Date actuelle: {datetime}
         current_prompt = conversation_context + user_message
         iteration = 0
 
-        logger.info(f"[DEBUG ReactEngine] Run {run_id}: starting, model={model}, history_len={len(history)}")
-        
+        logger.info(
+            f"[DEBUG ReactEngine] Run {run_id}: starting, model={model}, history_len={len(history)}"
+        )
+
         if websocket:
             await event_emitter.emit(
                 websocket, "thinking", run_id, {"message": "Analyse...", "iteration": 0}
@@ -191,7 +193,9 @@ Date actuelle: {datetime}
             if websocket:
                 full_response = ""
 
-                logger.info(f"[DEBUG ReactEngine] Run {run_id}: starting LLM stream (iteration {iteration})")
+                logger.info(
+                    f"[DEBUG ReactEngine] Run {run_id}: starting LLM stream (iteration {iteration})"
+                )
                 async for token in ollama_client.generate_stream(
                     prompt=current_prompt,
                     model=model,
@@ -211,8 +215,12 @@ Date actuelle: {datetime}
                         logger.warning(f"Token emit failed: {e}")
 
                 response_text = full_response
-                logger.info(f"[DEBUG ReactEngine] Run {run_id}: LLM stream complete, response_len={len(full_response)}")
-                logger.info(f"[DEBUG ReactEngine] Run {run_id}: response preview: {full_response[:200]}")
+                logger.info(
+                    f"[DEBUG ReactEngine] Run {run_id}: LLM stream complete, response_len={len(full_response)}"
+                )
+                logger.info(
+                    f"[DEBUG ReactEngine] Run {run_id}: response preview: {full_response[:200]}"
+                )
             else:
                 result = await ollama_client.generate(
                     prompt=current_prompt,

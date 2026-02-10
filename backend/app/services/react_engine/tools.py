@@ -17,7 +17,7 @@ import re
 import shlex
 import socket
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypedDict
 from urllib.parse import urlparse
@@ -856,7 +856,7 @@ def get_system_info() -> ToolResult:
 
 def get_datetime() -> ToolResult:
     """Date et heure actuelles"""
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     return ok(
         {
             "datetime": now.isoformat(),

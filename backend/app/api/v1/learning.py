@@ -12,15 +12,14 @@ Endpoints:
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
-
 from app.core.database import get_db
 from app.core.security import (get_admin_user, get_current_user,
                                get_current_user_optional)
 from app.services.learning import (FeedbackType, PerformanceEvaluator,
                                    get_feedback_collector, get_learning_memory)
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/learning", tags=["learning"])
 
@@ -271,7 +270,7 @@ async def set_user_preference(
     - **preference_value**: Valeur de la préférence
     """
     memory = get_learning_memory()
-    user_id = current_user.get("user_id", "anonymous")
+    user_id = current_user.get("sub", "anonymous")
 
     memory.store_user_preference(
         user_id=user_id, preference_type=preference_type, preference_value=preference_value
@@ -286,7 +285,7 @@ async def get_user_context(current_user: dict = Depends(get_current_user)):
     Récupère le contexte utilisateur stocké.
     """
     memory = get_learning_memory()
-    user_id = current_user.get("user_id", "anonymous")
+    user_id = current_user.get("sub", "anonymous")
 
     context = memory.get_user_context(user_id)
 

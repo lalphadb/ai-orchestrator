@@ -6,9 +6,11 @@ import api from '@/services/api'
 export const useAuthStore = defineStore('auth', () => {
   // SECURITY: Use sessionStorage instead of localStorage (expires on browser close)
   const token = ref(sessionStorage.getItem('token') || null)
+  const refreshTokenValue = ref(sessionStorage.getItem('refreshToken') || null)
   const user = ref(JSON.parse(sessionStorage.getItem('user') || 'null'))
   const loading = ref(false)
   const error = ref(null)
+  let refreshTimer = null
 
   const isAuthenticated = computed(() => !!token.value && !isTokenExpired(token.value))
   const isAdmin = computed(() => user.value?.is_admin || false)
@@ -43,10 +45,12 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await api.login(username, password)
 
       token.value = data.access_token
+      refreshTokenValue.value = data.refresh_token || null
       user.value = data.user
 
       // SECURITY: Use sessionStorage (expires on browser close)
       sessionStorage.setItem('token', data.access_token)
+      if (data.refresh_token) sessionStorage.setItem('refreshToken', data.refresh_token)
       sessionStorage.setItem('user', JSON.stringify(data.user))
 
       return data
@@ -66,10 +70,12 @@ export const useAuthStore = defineStore('auth', () => {
       const data = await api.register(username, password, email)
 
       token.value = data.access_token
+      refreshTokenValue.value = data.refresh_token || null
       user.value = data.user
 
       // SECURITY: Use sessionStorage (expires on browser close)
       sessionStorage.setItem('token', data.access_token)
+      if (data.refresh_token) sessionStorage.setItem('refreshToken', data.refresh_token)
       sessionStorage.setItem('user', JSON.stringify(data.user))
 
       return data
@@ -104,33 +110,74 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function logout() {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer)
+      refreshTimer = null
+    }
     token.value = null
+    refreshTokenValue.value = null
     user.value = null
     sessionStorage.removeItem('token')
+    sessionStorage.removeItem('refreshToken')
     sessionStorage.removeItem('user')
   }
 
-  // SECURITY: Auto-logout before token expiration
+  /**
+   * Silent token refresh using refresh_token
+   * Falls back to logout if refresh fails
+   */
+  async function silentRefresh() {
+    const currentRefreshToken = refreshTokenValue.value
+    if (!currentRefreshToken) {
+      console.log('No refresh token available, logging out')
+      logout()
+      return false
+    }
+
+    try {
+      const data = await api.refreshToken(currentRefreshToken)
+
+      token.value = data.access_token
+      refreshTokenValue.value = data.refresh_token || null
+      user.value = data.user
+
+      sessionStorage.setItem('token', data.access_token)
+      if (data.refresh_token) sessionStorage.setItem('refreshToken', data.refresh_token)
+      sessionStorage.setItem('user', JSON.stringify(data.user))
+
+      console.log('Token refreshed silently')
+      return true
+    } catch (_err) {
+      console.warn('Silent refresh failed, logging out:', _err.message)
+      logout()
+      return false
+    }
+  }
+
+  // SECURITY: Auto-refresh before token expiration
   watch(
     token,
     (newToken) => {
+      // Clear previous timer
+      if (refreshTimer) {
+        clearTimeout(refreshTimer)
+        refreshTimer = null
+      }
+
       if (newToken && !isTokenExpired(newToken)) {
         try {
           const decoded = jwtDecode(newToken)
           const expiresIn = decoded.exp * 1000 - Date.now()
 
-          // Logout automatically 10s before expiration
-          if (expiresIn > 10000) {
-            setTimeout(() => {
-              if (token.value === newToken) {
-                // Check token hasn't changed
-                console.log('Token about to expire, logging out')
-                logout()
-              }
-            }, expiresIn - 10000)
-          }
+          // Refresh automatically 60s before expiration
+          const refreshDelay = Math.max(expiresIn - 60000, 10000)
+          refreshTimer = setTimeout(() => {
+            if (token.value === newToken) {
+              silentRefresh()
+            }
+          }, refreshDelay)
         } catch (_err) {
-          console.error('Failed to setup auto-logout:', _err)
+          console.error('Failed to setup auto-refresh:', _err)
         }
       }
     },
@@ -148,6 +195,7 @@ export const useAuthStore = defineStore('auth', () => {
     register,
     checkSession,
     logout,
+    silentRefresh,
     isTokenExpired,
   }
 })

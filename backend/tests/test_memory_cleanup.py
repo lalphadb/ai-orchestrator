@@ -2,10 +2,11 @@
 Tests pour CRQ-P0-5: Memory Cleanup (TTL + Quota)
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
+
 from app.core.config import settings
 from app.services.react_engine.memory import DurableMemory, MemoryCategory
 
@@ -24,7 +25,7 @@ class TestMemoryTTL:
         )
 
         assert entry.expiry_date is not None
-        expected_expiry = datetime.now() + timedelta(days=7)
+        expected_expiry = datetime.now(timezone.utc) + timedelta(days=7)
         # Tolérance 10 secondes pour le test
         assert abs((entry.expiry_date - expected_expiry).total_seconds()) < 10
 
@@ -48,7 +49,7 @@ class TestMemoryTTL:
             MemoryCategory.CONTEXT, "expired_key", "expired", "Expired entry"
         )
         # Forcer l'expiry_date dans le passé
-        past_entry.expiry_date = datetime.now() - timedelta(days=1)
+        past_entry.expiry_date = datetime.now(timezone.utc) - timedelta(days=1)
         memory.entries[past_entry.id] = past_entry
 
         # Créer une entrée valide

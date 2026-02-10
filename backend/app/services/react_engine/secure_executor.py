@@ -16,7 +16,7 @@ import re
 import shlex
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -251,7 +251,11 @@ class SecureExecutor:
     ) -> AuditEntry:
         """Crée une entrée d'audit"""
         return AuditEntry(
-            timestamp=datetime.now(), role=role, command=argv, allowed=allowed, reason=reason
+            timestamp=datetime.now(timezone.utc),
+            role=role,
+            command=argv,
+            allowed=allowed,
+            reason=reason,
         )
 
     async def execute(

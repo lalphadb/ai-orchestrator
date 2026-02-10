@@ -43,7 +43,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   steps: {
     type: Array,
     required: true,

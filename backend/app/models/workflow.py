@@ -3,7 +3,7 @@ Modèles Pydantic pour le pipeline Spec/Plan/Execute/Verify/Repair
 AI Orchestrator v6.1
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
@@ -85,7 +85,7 @@ class ToolExecution(BaseModel):
     params: Dict[str, Any] = Field(default={}, description="Paramètres utilisés")
     result: Dict[str, Any] = Field(..., description="Résultat (ToolResult)")
     duration_ms: int = Field(default=0, description="Durée d'exécution")
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ExecutionResult(BaseModel):
@@ -169,7 +169,7 @@ class WorkflowState(BaseModel):
     repair_history: List[RepairAttempt] = Field(default=[])
 
     # Métadonnées
-    started_at: datetime = Field(default_factory=datetime.now)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
     total_duration_ms: int = Field(default=0)
     error: Optional[str] = None
