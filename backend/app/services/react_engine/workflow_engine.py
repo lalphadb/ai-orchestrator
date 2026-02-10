@@ -383,6 +383,59 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
         if any(ind in message_lower for ind in unsafe_indicators):
             return False
 
+        # Demandes d'analyse approfondie → toujours complexe
+        analytical_indicators = [
+            "analyse",
+            "analyze",
+            "diagnostique",
+            "diagnose",
+            "vérifie",
+            "verifie",
+            "verify",
+            "investigue",
+            "investigate",
+            "audite",
+            "audit",
+            "optimise",
+            "optimize",
+            "améliore",
+            "ameliore",
+            "improve",
+            "compare",
+            "évalue",
+            "evalue",
+            "evaluate",
+            "examine",
+            "inspecte",
+            "inspect",
+            "révise",
+            "revise",
+            "review",
+            "débogue",
+            "debug",
+            "profil",
+            "profile",
+            "benchmark",
+            "mesure",
+            "measure",
+            "en détail",
+            "en detail",
+            "en profondeur",
+            "approfondi",
+            "exhausti",
+            "complet",
+        ]
+        if any(ind in message_lower for ind in analytical_indicators):
+            logger.debug(
+                "[simple-detector] Analytical request detected, forcing workflow mode",
+                extra={
+                    "classification_reason": "analytical_request",
+                    "message_preview": message_lower[:100],
+                    "is_simple": False,
+                },
+            )
+            return False
+
         # Conversational / small talk
         conversational = [
             "bonjour",
@@ -499,8 +552,9 @@ Après correction, vérifie avec les outils QA (run_tests, run_lint, etc.)."""
         ):
             return True
 
-        # Generic question without dangerous actions is simple (e.g. "uptime du serveur?")
-        if is_question:
+        # Short generic questions are simple (e.g. "uptime du serveur?")
+        # But longer questions (>10 words) likely need deeper analysis
+        if is_question and len(message_lower.split()) <= 10:
             return True
 
         return False
