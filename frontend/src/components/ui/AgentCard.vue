@@ -1,6 +1,6 @@
 <!-- components/ui/AgentCard.vue -->
 <template>
-  <GlassCard class="agent-card" hoverable @click="$emit('click', agent)">
+  <GlassCard class="agent-card" hoverable @click="$emit('click')">
     <div class="agent-card__header">
       <div class="agent-card__icon">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -8,27 +8,24 @@
         </svg>
       </div>
       <div class="agent-card__status">
-        <StatusOrb :status="agent.status" size="sm" />
+        <StatusOrb :status="status" size="sm" :pulse="statusPulse" />
       </div>
     </div>
-    
+
     <div class="agent-card__content">
-      <h3 class="agent-card__title">{{ agent.name }}</h3>
-      <p class="agent-card__description">{{ agent.description }}</p>
+      <h3 class="agent-card__title">{{ name }}</h3>
+      <p class="agent-card__description">{{ description }}</p>
     </div>
-    
-    <div class="agent-card__footer">
-      <div class="agent-card__capabilities">
-        <span 
-          v-for="capability in agent.capabilities" 
-          :key="capability"
-          class="agent-card__capability"
+
+    <div class="agent-card__footer" v-if="metrics && metrics.length">
+      <div class="agent-card__metrics">
+        <span
+          v-for="metric in metrics"
+          :key="metric.label"
+          class="agent-card__metric"
         >
-          {{ capability }}
+          {{ metric.label }}: {{ metric.value }}
         </span>
-      </div>
-      <div class="agent-card__tools">
-        <span class="agent-card__tools-count">{{ agent.tools.length }} outils</span>
       </div>
     </div>
   </GlassCard>
@@ -39,16 +36,30 @@ import GlassCard from './GlassCard.vue'
 import StatusOrb from './StatusOrb.vue'
 
 defineProps({
-  agent: {
-    type: Object,
+  name: {
+    type: String,
     required: true,
-    validator: (v) => 
-      typeof v.id === 'string' && 
-      typeof v.name === 'string' && 
-      typeof v.description === 'string' &&
-      Array.isArray(v.capabilities) &&
-      Array.isArray(v.tools)
-  }
+  },
+  description: {
+    type: String,
+    default: '',
+  },
+  status: {
+    type: String,
+    default: 'default',
+  },
+  statusPulse: {
+    type: Boolean,
+    default: false,
+  },
+  metrics: {
+    type: Array,
+    default: () => [],
+  },
+  interactive: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 defineEmits(['click'])
@@ -104,22 +115,13 @@ defineEmits(['click'])
   margin-top: var(--space-4);
 }
 
-.agent-card__capabilities {
+.agent-card__metrics {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-.agent-card__capability {
-  font-size: var(--text-xs);
-  font-weight: var(--font-medium);
-  color: var(--text-on-accent);
-  background: var(--accent-primary-gradient);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-full);
-}
-
-.agent-card__tools-count {
+.agent-card__metric {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   font-weight: var(--font-medium);

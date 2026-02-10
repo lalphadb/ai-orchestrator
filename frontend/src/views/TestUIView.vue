@@ -112,8 +112,10 @@
     
     <div class="test-section">
       <h2 class="heading-2">Agent Card</h2>
-      <AgentCard 
-        :agent="sampleAgent"
+      <AgentCard
+        :name="sampleAgent.name"
+        :description="sampleAgent.description"
+        :status="sampleAgent.status"
         @click="handleAgentClick"
       />
     </div>
