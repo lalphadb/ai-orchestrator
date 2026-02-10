@@ -165,7 +165,7 @@ class Settings(BaseSettings):
     MEMORY_CLEANUP_INTERVAL_HOURS: int = 1  # Cleanup interval
 
     # Workspace Safety
-    WORKSPACE_DIR: str = "/"
+    WORKSPACE_DIR: str = "/home/lalpha/projets"
     WORKSPACE_ALLOW_WRITE: bool = True
 
     # EXECUTION SECURITY - CORRIGÉ: Mode sandbox par défaut

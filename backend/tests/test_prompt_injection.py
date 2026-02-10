@@ -321,23 +321,23 @@ class TestPromptInjectionIntegration:
         try:
             settings.ENFORCE_PROMPT_INJECTION_DETECTION = True
 
-            # Utiliser write_file avec input propre
-            with tempfile.NamedTemporaryFile(delete=False) as f:
-                test_path = f.name
+            # Utiliser write_file avec input propre (inside workspace)
+            test_path = os.path.join(settings.WORKSPACE_DIR, "_test_prompt_injection_clean.txt")
 
-            result = await BUILTIN_TOOLS.execute(
-                "write_file",
-                path=test_path,
-                content="This is clean test content about Python programming",
-                justification="Test prompt injection detection",
-            )
+            try:
+                result = await BUILTIN_TOOLS.execute(
+                    "write_file",
+                    path=test_path,
+                    content="This is clean test content about Python programming",
+                    justification="Test prompt injection detection",
+                )
 
-            # Doit réussir
-            assert result["success"] is True, f"Failed: {result}"
-
-            # Nettoyer
-            if os.path.exists(test_path):
-                os.unlink(test_path)
+                # Doit réussir
+                assert result["success"] is True, f"Failed: {result}"
+            finally:
+                # Nettoyer
+                if os.path.exists(test_path):
+                    os.unlink(test_path)
 
         finally:
             settings.ENFORCE_PROMPT_INJECTION_DETECTION = original_value

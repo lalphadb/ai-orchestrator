@@ -489,8 +489,8 @@ class TestAgentIsolationEnforcement:
             settings.ENFORCE_AGENT_ISOLATION = True
 
             # self_improve SHOULD have write_file
-            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
-                test_path = f.name
+            # Use a path inside WORKSPACE_DIR so it passes path validation
+            test_path = os.path.join(settings.WORKSPACE_DIR, "_test_agent_isolation.txt")
 
             try:
                 result = await BUILTIN_TOOLS.execute(
@@ -543,12 +543,13 @@ class TestAgentIsolationEnforcement:
         try:
             settings.ENFORCE_AGENT_ISOLATION = False
 
-            # Create a temp file to read
-            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
-                f.write("test content")
-                test_path = f.name
+            # Create a temp file inside workspace to read
+            test_path = os.path.join(settings.WORKSPACE_DIR, "_test_agent_no_enforce.txt")
 
             try:
+                with open(test_path, "w") as f:
+                    f.write("test content")
+
                 # Call without agent_id should work when enforcement disabled
                 result = await BUILTIN_TOOLS.execute("read_file", path=test_path)
 

@@ -180,4 +180,6 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG,
         workers=settings.WORKERS,
+        ws_ping_interval=20,
+        ws_ping_timeout=20,
     )
