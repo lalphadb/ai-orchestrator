@@ -1,12 +1,7 @@
 <!-- components/ui/SkeletonLoader.vue -->
 <template>
   <div class="skeleton" :class="`skeleton--${variant}`">
-    <div
-      v-for="i in lines"
-      :key="i"
-      class="skeleton__line"
-      :style="{ width: getLineWidth(i) }"
-    />
+    <div v-for="i in lines" :key="i" class="skeleton__line" :style="{ width: getLineWidth(i) }" />
   </div>
 </template>
 
@@ -15,12 +10,12 @@ const props = defineProps({
   variant: {
     type: String,
     default: 'text',
-    validator: (v) => ['text', 'card', 'avatar', 'button'].includes(v)
+    validator: (v) => ['text', 'card', 'avatar', 'button'].includes(v),
   },
   lines: {
     type: Number,
-    default: 3
-  }
+    default: 3,
+  },
 })
 
 const getLineWidth = (index) => {
@@ -67,7 +62,11 @@ const getLineWidth = (index) => {
 }
 
 @keyframes skeleton-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 </style>

@@ -3,7 +3,14 @@
   <GlassCard class="agent-card" hoverable @click="$emit('click')">
     <div class="agent-card__header">
       <div class="agent-card__icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
         </svg>
       </div>
@@ -17,13 +24,9 @@
       <p class="agent-card__description">{{ description }}</p>
     </div>
 
-    <div class="agent-card__footer" v-if="metrics && metrics.length">
+    <div v-if="metrics && metrics.length" class="agent-card__footer">
       <div class="agent-card__metrics">
-        <span
-          v-for="metric in metrics"
-          :key="metric.label"
-          class="agent-card__metric"
-        >
+        <span v-for="metric in metrics" :key="metric.label" class="agent-card__metric">
           {{ metric.label }}: {{ metric.value }}
         </span>
       </div>

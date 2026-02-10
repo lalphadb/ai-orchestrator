@@ -2,11 +2,7 @@
 <template>
   <div
     class="status-orb"
-    :class="[
-      `status-orb--${status}`,
-      `status-orb--${size}`,
-      { 'status-orb--pulse': pulse }
-    ]"
+    :class="[`status-orb--${status}`, `status-orb--${size}`, { 'status-orb--pulse': pulse }]"
   >
     <span class="status-orb__core" />
     <span v-if="pulse" class="status-orb__ring" />
@@ -19,15 +15,19 @@ defineProps({
   status: {
     type: String,
     default: 'default',
-    validator: (v) => ['default', 'active', 'success', 'warning', 'error', 'processing'].includes(v)
+    validator: (v) =>
+      ['default', 'active', 'success', 'warning', 'error', 'processing'].includes(v),
   },
   size: {
     type: String,
     default: 'md',
-    validator: (v) => ['sm', 'md', 'lg'].includes(v)
+    validator: (v) => ['sm', 'md', 'lg'].includes(v),
   },
   pulse: Boolean,
-  label: String,
+  label: {
+    type: String,
+    default: '',
+  },
 })
 </script>
 
@@ -51,13 +51,37 @@ defineProps({
 }
 
 /* Sizes */
-.status-orb--sm .status-orb__core { width: 8px; height: 8px; }
-.status-orb--md .status-orb__core { width: 10px; height: 10px; }
-.status-orb--lg .status-orb__core { width: 14px; height: 14px; }
+.status-orb--sm .status-orb__core {
+  width: 8px;
+  height: 8px;
+}
+.status-orb--md .status-orb__core {
+  width: 10px;
+  height: 10px;
+}
+.status-orb--lg .status-orb__core {
+  width: 14px;
+  height: 14px;
+}
 
-.status-orb--sm .status-orb__ring { width: 16px; height: 16px; top: -4px; left: -4px; }
-.status-orb--md .status-orb__ring { width: 20px; height: 20px; top: -5px; left: -5px; }
-.status-orb--lg .status-orb__ring { width: 28px; height: 28px; top: -7px; left: -7px; }
+.status-orb--sm .status-orb__ring {
+  width: 16px;
+  height: 16px;
+  top: -4px;
+  left: -4px;
+}
+.status-orb--md .status-orb__ring {
+  width: 20px;
+  height: 20px;
+  top: -5px;
+  left: -5px;
+}
+.status-orb--lg .status-orb__ring {
+  width: 28px;
+  height: 28px;
+  top: -7px;
+  left: -7px;
+}
 
 /* Status colors */
 .status-orb--active .status-orb__core,
@@ -106,10 +130,18 @@ defineProps({
 }
 
 .status-orb--active .status-orb__label,
-.status-orb--success .status-orb__label { color: var(--color-success); }
-.status-orb--error .status-orb__label { color: var(--color-error); }
-.status-orb--processing .status-orb__label { color: var(--accent-primary); }
-.status-orb--warning .status-orb__label { color: var(--color-warning); }
+.status-orb--success .status-orb__label {
+  color: var(--color-success);
+}
+.status-orb--error .status-orb__label {
+  color: var(--color-error);
+}
+.status-orb--processing .status-orb__label {
+  color: var(--accent-primary);
+}
+.status-orb--warning .status-orb__label {
+  color: var(--color-warning);
+}
 
 /* Pulse animation */
 @keyframes pulse-ring {

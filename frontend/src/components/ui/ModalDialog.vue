@@ -8,18 +8,25 @@
             <h2 class="modal-title">{{ title }}</h2>
           </slot>
           <button class="modal-close" @click="closeModal">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
         </div>
-        
+
         <div class="modal-body">
           <slot />
         </div>
-        
-        <div class="modal-footer" v-if="$slots.footer">
+
+        <div v-if="$slots.footer" class="modal-footer">
           <slot name="footer" />
         </div>
       </div>
@@ -33,21 +40,21 @@ import { onMounted, onUnmounted } from 'vue'
 const props = defineProps({
   isOpen: {
     type: Boolean,
-    default: false
+    default: false,
   },
   title: {
     type: String,
-    default: ''
+    default: '',
   },
   size: {
     type: String,
     default: 'md', // sm, md, lg, xl
-    validator: (v) => ['sm', 'md', 'lg', 'xl'].includes(v)
+    validator: (v) => ['sm', 'md', 'lg', 'xl'].includes(v),
   },
   closeOnOverlayClick: {
     type: Boolean,
-    default: true
-  }
+    default: true,
+  },
 })
 
 const emit = defineEmits(['close'])
@@ -169,8 +176,12 @@ onUnmounted(() => {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
@@ -189,7 +200,7 @@ onUnmounted(() => {
     width: 95vw;
     max-height: 90vh;
   }
-  
+
   .modal-header,
   .modal-body,
   .modal-footer {

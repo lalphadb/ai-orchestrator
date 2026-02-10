@@ -3,13 +3,20 @@
   <nav class="sidebar-nav">
     <div class="sidebar-nav__logo">
       <div class="logo-icon">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          width="32"
+          height="32"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
         </svg>
       </div>
       <span class="logo-text">Orchestrator</span>
     </div>
-    
+
     <div class="sidebar-nav__menu">
       <router-link
         v-for="item in menuItems"
@@ -25,11 +32,18 @@
         <div v-if="item.badge" class="sidebar-nav__badge">{{ item.badge }}</div>
       </router-link>
     </div>
-    
+
     <div class="sidebar-nav__footer">
       <div class="sidebar-nav__user">
         <div class="user-avatar">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
             <circle cx="12" cy="7" r="4"></circle>
           </svg>
@@ -55,8 +69,8 @@ const route = useRoute()
 defineProps({
   menuItems: {
     type: Array,
-    required: true
-  }
+    required: true,
+  },
 })
 
 const isActive = (path) => {
@@ -213,19 +227,19 @@ const isActive = (path) => {
   .sidebar-nav {
     width: var(--sidebar-width-collapsed);
   }
-  
+
   .logo-text,
   .sidebar-nav__label,
   .user-name,
   .user-status span {
     display: none;
   }
-  
+
   .sidebar-nav__item {
     justify-content: center;
     padding: var(--space-4) var(--space-3);
   }
-  
+
   .sidebar-nav__badge {
     position: absolute;
     top: 4px;

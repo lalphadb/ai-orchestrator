@@ -23,7 +23,7 @@
 4. Message de commit au format : `fix(module): description courte`
 
 ## Version actuelle
-v8.1 - branche `main`
+v8.2 - branche `main`
 
 ## Architecture
 

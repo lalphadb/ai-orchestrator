@@ -42,7 +42,14 @@ export default [
       'vue/no-v-html': 'warn',
       'no-console': 'off',
       'no-debugger': 'warn',
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+        },
+      ],
       'prettier/prettier': 'warn',
     },
   },

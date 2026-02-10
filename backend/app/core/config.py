@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # App
     APP_NAME: str = "AI Orchestrator"
-    APP_VERSION: str = "8.1.0"
+    APP_VERSION: str = "8.2.0"
 
     # Logging
     LOG_LEVEL: str = "INFO"

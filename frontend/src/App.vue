@@ -17,7 +17,7 @@
             <span
               class="font-semibold text-lg bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent"
             >
-              Orchestrator v8.1.0
+              Orchestrator v8.2.0
             </span>
           </router-link>
         </div>

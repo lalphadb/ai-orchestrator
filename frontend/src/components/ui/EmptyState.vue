@@ -3,8 +3,17 @@
   <div class="empty-state">
     <div class="empty-state__icon">
       <slot name="icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.47 3-10S14.66 2 13 2H9a7 7 0 000 14z" />
+        <svg
+          width="48"
+          height="48"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
+          <path
+            d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.66 0 3-4.47 3-10S14.66 2 13 2H9a7 7 0 000 14z"
+          />
         </svg>
       </slot>
     </div>
@@ -20,12 +29,12 @@
 defineProps({
   title: {
     type: String,
-    default: 'Aucun élément'
+    default: 'Aucun élément',
   },
   description: {
     type: String,
-    default: 'Il n\'y a rien à afficher ici pour le moment.'
-  }
+    default: "Il n'y a rien à afficher ici pour le moment.",
+  },
 })
 </script>
 

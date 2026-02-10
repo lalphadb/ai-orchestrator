@@ -249,7 +249,9 @@
               </span>
             </div>
             <div>
-              <p class="body-default" style="color: var(--text-primary)">{{ auth.user?.username }}</p>
+              <p class="body-default" style="color: var(--text-primary)">
+                {{ auth.user?.username }}
+              </p>
               <p class="body-small" style="color: var(--text-secondary)">{{ auth.user?.email }}</p>
               <p
                 v-if="auth.isAdmin"
@@ -295,7 +297,7 @@
 
         <div class="space-y-2 body-small">
           <p style="color: var(--text-primary)">
-            <span style="color: var(--text-tertiary)">Version:</span> AI Orchestrator v8.1
+            <span style="color: var(--text-tertiary)">Version:</span> AI Orchestrator v8.2
           </p>
           <p style="color: var(--text-primary)">
             <span style="color: var(--text-tertiary)">Backend:</span> FastAPI + ReAct Engine

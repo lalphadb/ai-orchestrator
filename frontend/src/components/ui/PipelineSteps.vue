@@ -1,29 +1,43 @@
 <!-- components/ui/PipelineSteps.vue -->
 <template>
   <div class="pipeline-steps">
-    <div 
-      v-for="(step, index) in steps" 
+    <div
+      v-for="(step, index) in steps"
       :key="step.id"
       class="pipeline-step"
       :class="{
         'pipeline-step--active': step.id === currentStep,
         'pipeline-step--completed': isCompleted(step.id),
-        'pipeline-step--pending': isPending(step.id)
+        'pipeline-step--pending': isPending(step.id),
       }"
     >
-      <div class="pipeline-step__connector" v-if="index > 0">
+      <div v-if="index > 0" class="pipeline-step__connector">
         <div class="pipeline-step__connector-line" />
       </div>
-      
+
       <div class="pipeline-step__content">
         <div class="pipeline-step__icon">
           <div v-if="isCompleted(step.id)" class="pipeline-step__icon-check">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+            >
               <polyline points="20,6 9,17 4,12"></polyline>
             </svg>
           </div>
           <div v-else-if="step.id === currentStep" class="pipeline-step__icon-current">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
               <circle cx="12" cy="12" r="10"></circle>
               <polyline points="12,8 12,12 15,15"></polyline>
             </svg>
@@ -32,10 +46,12 @@
             {{ index + 1 }}
           </div>
         </div>
-        
+
         <div class="pipeline-step__label">
           <span class="pipeline-step__title">{{ step.title }}</span>
-          <span v-if="step.description" class="pipeline-step__description">{{ step.description }}</span>
+          <span v-if="step.description" class="pipeline-step__description">{{
+            step.description
+          }}</span>
         </div>
       </div>
     </div>
@@ -46,17 +62,16 @@
 const props = defineProps({
   steps: {
     type: Array,
-    required: true,
-    default: () => []
+    default: () => [],
   },
   currentStep: {
     type: String,
-    required: true
+    required: true,
   },
   completedSteps: {
     type: Array,
-    default: () => []
-  }
+    default: () => [],
+  },
 })
 
 const isCompleted = (stepId) => {
@@ -178,8 +193,13 @@ const isPending = (stepId) => {
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(139, 92, 246, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(139, 92, 246, 0);
+  }
 }
 
 @media (max-width: 768px) {
@@ -187,19 +207,19 @@ const isPending = (stepId) => {
     flex-direction: column;
     align-items: stretch;
   }
-  
+
   .pipeline-step {
     flex-direction: row;
     align-items: center;
     text-align: left;
   }
-  
+
   .pipeline-step__content {
     align-items: flex-start;
     text-align: left;
     padding: var(--space-2);
   }
-  
+
   .pipeline-step__connector {
     width: 36px;
     height: 50%;
@@ -208,13 +228,13 @@ const isPending = (stepId) => {
     top: 46px;
     flex-direction: column;
   }
-  
+
   .pipeline-step__connector-line {
     width: 2px;
     height: 100%;
     margin-left: 17px;
   }
-  
+
   .pipeline-step:first-child .pipeline-step__connector {
     display: flex;
   }

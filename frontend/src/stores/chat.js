@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 import { wsClient } from '@/services/wsClient'
-import { isTerminalEvent, requiresRunId } from '@/services/ws/normalizeEvent'
+// normalizeEvent utilities used internally by wsClient
 import {
   RunStatus,
   WorkflowPhase,
@@ -158,7 +158,10 @@ export const useChatStore = defineStore('chat', () => {
     //   2. OR pending has no conversation (new conversation case)
     //   3. OR convId is null (event arrived before conversation_created)
     for (const pending of pendingMessages.value.values()) {
-      if (!pending.runId && (!convId || pending.conversationId === convId || !pending.conversationId)) {
+      if (
+        !pending.runId &&
+        (!convId || pending.conversationId === convId || !pending.conversationId)
+      ) {
         pending.runId = runId
         pending.userMsg.run_id = runId
         pending.assistantMsg.run_id = runId
@@ -759,7 +762,7 @@ export const useChatStore = defineStore('chat', () => {
    * Update watchdog heartbeat on WebSocket event (V8)
    * Called automatically by handleNormalizedEvent for every event
    */
-  function updateWatchdogFromEvent(runId) {
+  function _updateWatchdogFromEvent(runId) {
     const run = runs.value.get(runId)
     if (!run || !run.watchdog) return
 
@@ -792,7 +795,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   function stopAllWatchdogs() {
     let count = 0
-    for (const [runId, run] of runs.value.entries()) {
+    for (const [, run] of runs.value.entries()) {
       if (run.watchdog?.timerId) {
         clearInterval(run.watchdog.timerId)
         run.watchdog.timerId = null
@@ -805,7 +808,7 @@ export const useChatStore = defineStore('chat', () => {
   /**
    * Cleanup watchdogs for a specific conversation (navigation)
    */
-  function cleanupWatchdogsForConversation(conversationId) {
+  function _cleanupWatchdogsForConversation(conversationId) {
     const runIds = runsByConversation.value.get(conversationId)
     if (!runIds) return
 
@@ -1305,7 +1308,8 @@ export const useChatStore = defineStore('chat', () => {
   })
 
   // CRQ-P0-5: Cleanup automatique toutes les 60s (memory leak prevention)
-  const cleanupIntervalId = setInterval(cleanupGlobalRuns, 60000)
+  // CRQ-P0-5: interval runs for lifetime of store, no need to clear
+  setInterval(cleanupGlobalRuns, 60000)
 
   return {
     // State

@@ -308,7 +308,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import GlassCard from '@/components/ui/GlassCard.vue'
 import StatusOrb from '@/components/ui/StatusOrb.vue'

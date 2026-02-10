@@ -10,7 +10,7 @@
           </div>
         </slot>
       </div>
-      <div class="metric-card__status" v-if="status">
+      <div v-if="status" class="metric-card__status">
         <StatusOrb :status="status" size="sm" />
       </div>
     </div>
@@ -18,13 +18,24 @@
     <div class="metric-card__content">
       <h3 class="metric-card__title">{{ title }}</h3>
       <div class="metric-card__value">{{ displayValue }}</div>
-      <div class="metric-card__trend" v-if="trend">
+      <div v-if="trend" class="metric-card__trend">
         <span :class="trendClass">{{ trend }}</span>
-        <svg v-if="trend.startsWith('+')" class="trend-icon up" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          v-if="trend.startsWith('+')"
+          class="trend-icon up"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
         </svg>
         <svg v-else class="trend-icon down" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M19 9l-7 7-7-7"
+          />
         </svg>
       </div>
     </div>
@@ -37,44 +48,44 @@ import { computed } from 'vue'
 const props = defineProps({
   label: {
     type: String,
-    required: true
+    required: true,
   },
   value: {
     type: [String, Number],
-    required: true
+    required: true,
   },
   unit: {
     type: String,
-    default: ''
+    default: '',
   },
   color: {
     type: String,
     default: 'primary',
-    validator: (v) => ['primary', 'success', 'warning', 'error', 'info'].includes(v)
+    validator: (v) => ['primary', 'success', 'warning', 'error', 'info'].includes(v),
   },
   icon: {
     type: [String, Object],
-    default: null
+    default: null,
   },
   trend: {
     type: String,
-    default: null
+    default: null,
   },
   status: {
     type: String,
     default: null,
-    validator: (v) => ['default', 'active', 'success', 'warning', 'error', 'processing'].includes(v)
-  }
+    validator: (v) =>
+      ['default', 'active', 'success', 'warning', 'error', 'processing'].includes(v),
+  },
 })
 
 const title = computed(() => props.label)
-const colorClass = computed(() => `color-${props.color}`)
 const displayValue = computed(() => `${props.value}${props.unit ? ` ${props.unit}` : ''}`)
 
 const trendClass = computed(() => ({
   'trend-up': props.trend?.startsWith('+'),
   'trend-down': props.trend?.startsWith('-'),
-  'trend-neutral': !props.trend?.startsWith('+') && !props.trend?.startsWith('-')
+  'trend-neutral': !props.trend?.startsWith('+') && !props.trend?.startsWith('-'),
 }))
 </script>
 

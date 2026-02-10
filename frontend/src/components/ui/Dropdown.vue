@@ -1,22 +1,22 @@
 <!-- components/ui/Dropdown.vue -->
 <template>
-  <div class="dropdown" ref="dropdownRef">
+  <div ref="dropdownRef" class="dropdown">
     <button class="dropdown-trigger" @click="toggleDropdown">
       <slot name="trigger" />
-      <svg 
-        class="dropdown-arrow" 
+      <svg
+        class="dropdown-arrow"
         :class="{ 'dropdown-arrow--open': isOpen }"
-        width="16" 
-        height="16" 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="currentColor" 
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
         stroke-width="2"
       >
         <polyline points="6,9 12,15 18,9"></polyline>
       </svg>
     </button>
-    
+
     <div v-show="isOpen" class="dropdown-menu" :class="`dropdown-menu--${position}`">
       <slot name="items" />
     </div>
@@ -26,12 +26,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 
-const props = defineProps({
+defineProps({
   position: {
     type: String,
     default: 'bottom-start',
-    validator: (v) => ['bottom-start', 'bottom-end', 'top-start', 'top-end'].includes(v)
-  }
+    validator: (v) => ['bottom-start', 'bottom-end', 'top-start', 'top-end'].includes(v),
+  },
 })
 
 const isOpen = ref(false)

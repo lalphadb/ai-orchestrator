@@ -3,7 +3,7 @@
  * Extrait de MessageList.vue pour réduire la complexité
  */
 
-import { ref } from 'vue'
+// Vue reactivity not needed - pure utility functions
 
 export function useModelDetection() {
   // Cache pour éviter les appels multiples (LRU simple)

@@ -2,7 +2,7 @@
 <template>
   <div class="test-ui-page">
     <h1 class="heading-1">Test des nouveaux composants UI</h1>
-    
+
     <div class="test-section">
       <h2 class="heading-2">GlassCard</h2>
       <div class="component-grid">
@@ -17,7 +17,7 @@
         </GlassCard>
       </div>
     </div>
-    
+
     <div class="test-section">
       <h2 class="heading-2">ModernButton</h2>
       <div class="component-grid">
@@ -26,9 +26,16 @@
         <ModernButton variant="ghost">Bouton Ghost</ModernButton>
         <ModernButton variant="danger">Bouton Danger</ModernButton>
         <ModernButton variant="primary" loading>Chargement...</ModernButton>
-        <ModernButton variant="primary" iconOnly>
+        <ModernButton variant="primary" icon-only>
           <template #icon-left>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="12" y1="8" x2="12" y2="12"></line>
               <line x1="12" y1="16" x2="12.01" y2="16"></line>
@@ -37,7 +44,7 @@
         </ModernButton>
       </div>
     </div>
-    
+
     <div class="test-section">
       <h2 class="heading-2">StatusOrb</h2>
       <div class="component-grid">
@@ -61,7 +68,7 @@
         </div>
       </div>
     </div>
-    
+
     <div class="test-section">
       <h2 class="heading-2">Autres composants</h2>
       <div class="component-grid">
@@ -69,47 +76,39 @@
         <SkeletonLoader variant="card" />
         <SkeletonLoader variant="avatar" />
         <SkeletonLoader variant="button" />
-        
-        <EmptyState 
-          title="Aucun élément trouvé" 
+
+        <EmptyState
+          title="Aucun élément trouvé"
           description="Il n'y a rien à afficher ici pour le moment."
         >
           <template #actions>
             <ModernButton variant="primary">Créer un élément</ModernButton>
           </template>
         </EmptyState>
-        
-        <MetricCard 
-          title="Taux de succès" 
-          value="98.5%" 
-          status="success"
-          trend="+2.3%"
-        />
-        
+
+        <MetricCard title="Taux de succès" value="98.5%" status="success" trend="+2.3%" />
+
         <div class="thinking-test">
           <p>Indicateur de réflexion :</p>
           <ThinkingDots />
         </div>
       </div>
     </div>
-    
+
     <div class="test-section">
       <h2 class="heading-2">Pipeline Steps</h2>
-      <PipelineSteps 
+      <PipelineSteps
         :steps="pipelineSteps"
         :current-step="currentStep"
         :completed-steps="completedSteps"
       />
     </div>
-    
+
     <div class="test-section">
       <h2 class="heading-2">Code Block</h2>
-      <CodeBlock 
-        :code="sampleCode" 
-        language="javascript"
-      />
+      <CodeBlock :code="sampleCode" language="javascript" />
     </div>
-    
+
     <div class="test-section">
       <h2 class="heading-2">Agent Card</h2>
       <AgentCard
@@ -140,10 +139,10 @@ const completedSteps = ref(['spec', 'plan'])
 
 const pipelineSteps = [
   { id: 'spec', title: 'Spécification', description: 'Analyse de la demande' },
-  { id: 'plan', title: 'Planification', description: 'Création du plan d\'exécution' },
+  { id: 'plan', title: 'Planification', description: "Création du plan d'exécution" },
   { id: 'execute', title: 'Exécution', description: 'Exécution du plan' },
   { id: 'verify', title: 'Vérification', description: 'Vérification des résultats' },
-  { id: 'repair', title: 'Réparation', description: 'Correction si nécessaire' }
+  { id: 'repair', title: 'Réparation', description: 'Correction si nécessaire' },
 ]
 
 const sampleCode = `function calculateSum(a, b) {
@@ -159,7 +158,7 @@ const sampleAgent = {
   description: 'Recherche des informations sur le web',
   status: 'active',
   capabilities: ['web', 'research'],
-  tools: ['web_search', 'web_read', 'http_request']
+  tools: ['web_search', 'web_read', 'http_request'],
 }
 
 const handleAgentClick = (agent) => {

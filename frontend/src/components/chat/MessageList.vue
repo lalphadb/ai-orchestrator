@@ -525,7 +525,9 @@ function renderContent(content) {
 
   // Protection performance: tronquer les contenus trop longs
   if (content.length > MAX_RENDER_LENGTH) {
-    content = content.substring(0, MAX_RENDER_LENGTH) + '\n\n*[Contenu tronqué — trop volumineux pour le rendu]*'
+    content =
+      content.substring(0, MAX_RENDER_LENGTH) +
+      '\n\n*[Contenu tronqué — trop volumineux pour le rendu]*'
   }
 
   // Si c'est une liste de modèles, ne pas render (sera géré par ModelsDisplay)

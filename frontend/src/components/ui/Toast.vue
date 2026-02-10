@@ -2,10 +2,7 @@
 <template>
   <div
     class="toast"
-    :class="[
-      `toast--${type}`,
-      { 'toast--visible': visible }
-    ]"
+    :class="[`toast--${type}`, { 'toast--visible': visible }]"
     :aria-live="type === 'error' ? 'assertive' : 'polite'"
     role="alert"
   >
@@ -14,13 +11,28 @@
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
       </svg>
       <svg v-else-if="type === 'error'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M6 18L18 6M6 6l12 12"
+        />
       </svg>
       <svg v-else-if="type === 'warning'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.34 16c-.77.833.192 2.5 1.732 2.5z" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.34 16c-.77.833.192 2.5 1.732 2.5z"
+        />
       </svg>
       <svg v-else fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+        />
       </svg>
     </div>
     <div class="toast__content">
@@ -29,7 +41,12 @@
     </div>
     <button class="toast__close" @click="close">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M6 18L18 6M6 6l12 12"
+        />
       </svg>
     </button>
   </div>
@@ -42,24 +59,24 @@ const props = defineProps({
   type: {
     type: String,
     default: 'info',
-    validator: (v) => ['success', 'error', 'warning', 'info'].includes(v)
+    validator: (v) => ['success', 'error', 'warning', 'info'].includes(v),
   },
   title: {
     type: String,
-    required: true
+    required: true,
   },
   description: {
     type: String,
-    default: null
+    default: null,
   },
   duration: {
     type: Number,
-    default: 5000
+    default: 5000,
   },
   visible: {
     type: Boolean,
-    default: false
-  }
+    default: false,
+  },
 })
 
 const emit = defineEmits(['close'])

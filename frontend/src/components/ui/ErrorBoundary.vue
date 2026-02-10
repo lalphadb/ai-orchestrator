@@ -5,16 +5,19 @@
       <div class="error-boundary__content">
         <div class="error-boundary__icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-            <path d="M12 8v4m0 4h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+            <path
+              d="M12 8v4m0 4h.01"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            />
           </svg>
         </div>
         <h3 class="error-boundary__title">Une erreur est survenue</h3>
         <p class="error-boundary__message">{{ error.message }}</p>
         <div class="error-boundary__actions">
-          <ModernButton variant="primary" @click="retry">
-            Réessayer
-          </ModernButton>
+          <ModernButton variant="primary" @click="retry"> Réessayer </ModernButton>
           <ModernButton variant="ghost" @click="showDetails = !showDetails">
             {{ showDetails ? 'Masquer' : 'Détails' }}
           </ModernButton>

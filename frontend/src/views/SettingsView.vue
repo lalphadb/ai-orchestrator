@@ -232,11 +232,7 @@
           </div>
         </div>
 
-        <ModernButton
-          variant="danger"
-          size="md"
-          @click="handleLogout"
-        >
+        <ModernButton variant="danger" size="md" @click="handleLogout">
           Se déconnecter
         </ModernButton>
       </div>

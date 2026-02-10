@@ -2,12 +2,7 @@
 <template>
   <div class="tooltip-wrapper" @mouseenter="showTooltip" @mouseleave="hideTooltip">
     <slot />
-    <div 
-      v-if="isVisible" 
-      class="tooltip"
-      :class="`tooltip--${position}`"
-      :style="tooltipStyle"
-    >
+    <div v-if="isVisible" class="tooltip" :class="`tooltip--${position}`" :style="tooltipStyle">
       {{ content }}
     </div>
   </div>
@@ -19,21 +14,21 @@ import { ref, computed } from 'vue'
 const props = defineProps({
   content: {
     type: String,
-    required: true
+    required: true,
   },
   position: {
     type: String,
     default: 'top',
-    validator: (v) => ['top', 'bottom', 'left', 'right'].includes(v)
+    validator: (v) => ['top', 'bottom', 'left', 'right'].includes(v),
   },
   showDelay: {
     type: Number,
-    default: 500
+    default: 500,
   },
   hideDelay: {
     type: Number,
-    default: 100
-  }
+    default: 100,
+  },
 })
 
 const isVisible = ref(false)
@@ -60,39 +55,39 @@ const hideTooltip = () => {
 const updatePosition = () => {
   const parent = document.querySelector('.tooltip-wrapper')
   if (!parent) return
-  
+
   const rect = parent.getBoundingClientRect()
   const tooltipWidth = 200 // Approximate width of tooltip
   const tooltipHeight = 40 // Approximate height of tooltip
-  
+
   let top = 0
   let left = 0
-  
+
   switch (props.position) {
     case 'top':
       top = rect.top - tooltipHeight - 10
-      left = rect.left + (rect.width / 2) - (tooltipWidth / 2)
+      left = rect.left + rect.width / 2 - tooltipWidth / 2
       break
     case 'bottom':
       top = rect.bottom + 10
-      left = rect.left + (rect.width / 2) - (tooltipWidth / 2)
+      left = rect.left + rect.width / 2 - tooltipWidth / 2
       break
     case 'left':
-      top = rect.top + (rect.height / 2) - (tooltipHeight / 2)
+      top = rect.top + rect.height / 2 - tooltipHeight / 2
       left = rect.left - tooltipWidth - 10
       break
     case 'right':
-      top = rect.top + (rect.height / 2) - (tooltipHeight / 2)
+      top = rect.top + rect.height / 2 - tooltipHeight / 2
       left = rect.right + 10
       break
   }
-  
+
   tooltipPosition.value = { top: `${top}px`, left: `${left}px` }
 }
 
 const tooltipStyle = computed(() => ({
   top: tooltipPosition.value.top,
-  left: tooltipPosition.value.left
+  left: tooltipPosition.value.left,
 }))
 </script>
 

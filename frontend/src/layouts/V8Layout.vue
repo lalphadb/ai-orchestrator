@@ -12,7 +12,7 @@
           </div>
           <div>
             <div class="font-semibold">Orchestrator</div>
-            <div class="text-xs text-gray-500">v8.1.0</div>
+            <div class="text-xs text-gray-500">v8.2.0</div>
           </div>
         </router-link>
       </div>

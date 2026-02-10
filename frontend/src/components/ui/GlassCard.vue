@@ -5,12 +5,12 @@
     :class="[
       `glass-card--${variant}`,
       { 'glass-card--hoverable': hoverable },
-      { 'glass-card--active': active }
+      { 'glass-card--active': active },
     ]"
     @click="hoverable && $emit('click')"
   >
     <div v-if="glow" class="glass-card__glow" />
-    <div class="glass-card__header" v-if="$slots.header">
+    <div v-if="$slots.header" class="glass-card__header">
       <slot name="header" />
     </div>
     <div class="glass-card__content" :class="`glass-card__content--${padding}`">
@@ -24,7 +24,7 @@ defineProps({
   variant: {
     type: String,
     default: 'default',
-    validator: (v) => ['default', 'elevated', 'bordered', 'interactive'].includes(v)
+    validator: (v) => ['default', 'elevated', 'bordered', 'interactive'].includes(v),
   },
   hoverable: Boolean,
   active: Boolean,
@@ -32,8 +32,8 @@ defineProps({
   padding: {
     type: String,
     default: 'md', // default padding
-    validator: (v) => ['none', 'sm', 'md', 'lg'].includes(v)
-  }
+    validator: (v) => ['none', 'sm', 'md', 'lg'].includes(v),
+  },
 })
 
 defineEmits(['click'])
@@ -84,11 +84,7 @@ defineEmits(['click'])
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(
-    circle at center,
-    rgba(139, 92, 246, 0.1) 0%,
-    transparent 50%
-  );
+  background: radial-gradient(circle at center, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
   opacity: 0;
   transition: opacity var(--transition-normal);
   pointer-events: none;

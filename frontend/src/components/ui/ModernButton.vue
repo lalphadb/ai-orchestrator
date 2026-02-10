@@ -6,7 +6,7 @@
       `modern-btn--${variant}`,
       `modern-btn--${size}`,
       { 'modern-btn--loading': loading },
-      { 'modern-btn--icon-only': iconOnly }
+      { 'modern-btn--icon-only': iconOnly },
     ]"
     :disabled="disabled || loading"
     @click="$emit('click')"
@@ -31,12 +31,12 @@ defineProps({
   variant: {
     type: String,
     default: 'primary',
-    validator: (v) => ['primary', 'secondary', 'ghost', 'danger'].includes(v)
+    validator: (v) => ['primary', 'secondary', 'ghost', 'danger'].includes(v),
   },
   size: {
     type: String,
     default: 'md',
-    validator: (v) => ['sm', 'md', 'lg'].includes(v)
+    validator: (v) => ['sm', 'md', 'lg'].includes(v),
   },
   loading: Boolean,
   disabled: Boolean,
@@ -142,12 +142,22 @@ defineEmits(['click'])
   animation: btn-loading 1.4s infinite ease-in-out both;
 }
 
-.modern-btn__loader span:nth-child(1) { animation-delay: -0.32s; }
-.modern-btn__loader span:nth-child(2) { animation-delay: -0.16s; }
+.modern-btn__loader span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+.modern-btn__loader span:nth-child(2) {
+  animation-delay: -0.16s;
+}
 
 @keyframes btn-loading {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+  0%,
+  80%,
+  100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
 }
 
 /* Disabled */
@@ -158,7 +168,16 @@ defineEmits(['click'])
 }
 
 /* Icon only */
-.modern-btn--icon-only.modern-btn--sm { width: 32px; padding: 0; }
-.modern-btn--icon-only.modern-btn--md { width: 40px; padding: 0; }
-.modern-btn--icon-only.modern-btn--lg { width: 48px; padding: 0; }
+.modern-btn--icon-only.modern-btn--sm {
+  width: 32px;
+  padding: 0;
+}
+.modern-btn--icon-only.modern-btn--md {
+  width: 40px;
+  padding: 0;
+}
+.modern-btn--icon-only.modern-btn--lg {
+  width: 48px;
+  padding: 0;
+}
 </style>
